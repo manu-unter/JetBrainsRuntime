@@ -214,7 +214,7 @@ ifeq ($(call isTargetOs, windows macosx), false)
       endif
     endif
 
-    LIBAWT_XAWT_LIBS := $(LIBM) -lawt -lXext -lX11 -lXrender $(LIBDL) -lXtst -lXi -ljava -ljvm
+    LIBAWT_XAWT_LIBS := $(LIBM) -lawt -lXext -lX11 -lXrender $(WAYLAND_LIBS) $(LIBDL) -lXtst -lXi -ljava -ljvm
 
     ifeq ($(call isTargetOs, linux), true)
       LIBAWT_XAWT_LIBS += -lpthread
@@ -719,7 +719,7 @@ ifeq ($(ENABLE_HEADLESS_ONLY), false)
   else ifeq ($(call isTargetOs, windows), true)
     LIBSPLASHSCREEN_LIBS += kernel32.lib user32.lib gdi32.lib delayimp.lib $(WIN_JAVA_LIB) jvm.lib
   else
-    LIBSPLASHSCREEN_LIBS += $(X_LIBS) -lX11 -lXext $(LIBM) -lpthread -ldl
+    LIBSPLASHSCREEN_LIBS += $(X_LIBS) $(WAYLAND_LIBS) -lX11 -lXext $(LIBM) -lpthread -ldl
   endif
 
   LIBSPLASHSCREEN_HEADER_DIRS += \
@@ -783,7 +783,7 @@ ifeq ($(call isTargetOs, macosx), true)
       libosxapp \
       #
 
-  LIBAWT_LWAWT_CFLAGS := $(X_CFLAGS) $(X_LIBS)
+  LIBAWT_LWAWT_CFLAGS := $(X_CFLAGS) $(X_LIBS) $(WAYLAND_LIBS)
 
   LIBAWT_LWAWT_EXFILES := fontpath.c awt_Font.c X11Color.c
   LIBAWT_LWAWT_EXCLUDES := $(TOPDIR)/src/$(MODULE)/unix/native/common/awt/medialib

@@ -29,6 +29,7 @@ import java.awt.GraphicsEnvironment;
 import java.awt.Toolkit;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import sun.security.action.GetPropertyAction;
 
 public class PlatformGraphicsInfo {
 
@@ -37,6 +38,16 @@ public class PlatformGraphicsInfo {
     }
 
     public static Toolkit createToolkit() {
+        @SuppressWarnings("removal")
+        String toolkitName = AccessController.doPrivileged(
+            new GetPropertyAction("awt.toolkit.name"));
+
+        if ("XToolkit".equals(toolkitName)) {
+            return new sun.awt.X11.XToolkit();
+        } else if("WLToolkit".equals(toolkitName) ){
+            return new sun.awt.wl.WLToolkit();
+        }
+
         return new sun.awt.X11.XToolkit();
     }
 

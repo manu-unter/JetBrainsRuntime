@@ -41,6 +41,7 @@ import java.awt.FileDialog;
 import java.awt.Frame;
 import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
 import java.awt.HeadlessException;
 import java.awt.Image;
 import java.awt.Insets;
@@ -112,6 +113,13 @@ import sun.util.logging.PlatformLogger;
 public class WLToolkit extends UNIXToolkit implements Runnable {
     private static final PlatformLogger log = PlatformLogger.getLogger("sun.awt.wl.WLToolkit");
 
+    private static native void initIDs();
+
+    static {
+        if (!GraphicsEnvironment.isHeadless()) {
+            initIDs();
+        }
+    }
     @Override
     public ButtonPeer createButton(Button target) {
         log.info("Not implemented: WLToolkit.createButton(Button)");

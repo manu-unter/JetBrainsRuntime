@@ -27,6 +27,9 @@ public class JBRApiModule {
     static {
         JBRApi.registerModule(MethodHandles.lookup(), JBRApiModule.class.getModule()::addExports)
                 .service("com.jetbrains.ExtendedGlyphCache", null)
-                    .withStatic("getSubpixelResolution", "sun.font.FontUtilities");
+                    .withStatic("getSubpixelResolution", "sun.font.FontUtilities")
+                .service("com.jetbrains.FileDialogService", null)
+                    .withStatic("getFileDialog", "com.jetbrains.desktop.FileDialog", "get")
+                .proxy("com.jetbrains.FileDialog", "com.jetbrains.desktop.FileDialog");
     }
 }

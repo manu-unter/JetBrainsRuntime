@@ -71,12 +71,21 @@ class CFileDialog implements FileDialogPeer {
                 @SuppressWarnings("removal")
                 boolean navigateApps = !AccessController.doPrivileged(
                         new GetBooleanAction("apple.awt.use-file-dialog-packages"));
-                @SuppressWarnings("removal")
-                boolean chooseDirectories = AccessController.doPrivileged(
-                        new GetBooleanAction("apple.awt.fileDialogForDirectories"));
-                @SuppressWarnings("removal")
-                boolean chooseFiles = AccessController.doPrivileged(
-                        new GetBooleanAction("apple.awt.fileDialogForFiles"));
+
+                com.jetbrains.desktop.FileDialog jbrDialog = com.jetbrains.desktop.FileDialog.get(target);
+                boolean chooseDirectories, chooseFiles;
+                if (jbrDialog.selectionMode == com.jetbrains.desktop.FileDialog.SELECT_DEFAULT) {
+                    @SuppressWarnings("removal")
+                    boolean dir = AccessController.doPrivileged(
+                            new GetBooleanAction("apple.awt.fileDialogForDirectories"));
+                    chooseFiles = !dir;
+                    chooseDirectories = dir;
+                } else if (jbrDialog.selectionMode == com.jetbrains.desktop.FileDialog.SELECT_FILES_AND_DIRECTORIES) {
+                    chooseDirectories = chooseFiles = true;
+                } else {
+                    chooseFiles = jbrDialog.selectionMode == com.jetbrains.desktop.FileDialog.SELECT_FILES_ONLY;
+                    chooseDirectories = jbrDialog.selectionMode == com.jetbrains.desktop.FileDialog.SELECT_DIRECTORIES_ONLY;
+                }
 
                 int dialogMode = target.getMode();
                 String title = target.getTitle();
@@ -90,6 +99,7 @@ class CFileDialog implements FileDialogPeer {
                         navigateApps,
                         chooseDirectories,
                         chooseFiles,
+                        jbrDialog.canCreateDirectories == null || jbrDialog.canCreateDirectories,
                         target.getFilenameFilter() != null,
                         target.getDirectory(),
                         target.getFile());
@@ -184,7 +194,8 @@ class CFileDialog implements FileDialogPeer {
     private native String[] nativeRunFileDialog(String title, int mode,
             boolean multipleMode, boolean shouldNavigateApps,
             boolean canChooseDirectories, boolean canChooseFiles,
-            boolean hasFilenameFilter, String directory, String file);
+            boolean canCreateDirectories, boolean hasFilenameFilter,
+            String directory, String file);
 
     @Override
     public void setDirectory(String dir) {

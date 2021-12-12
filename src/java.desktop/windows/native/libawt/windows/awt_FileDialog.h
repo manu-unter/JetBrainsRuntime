@@ -56,10 +56,12 @@ public:
     static jfieldID dirID;
     static jfieldID fileID;
     static jfieldID filterID;
+    static jfieldID jbrDialogID;
+
+    /* com.jetbrains.desktop.FileDialog field and method ids */
     static jfieldID openButtonTextID;
     static jfieldID selectFolderButtonTextID;
-    static jfieldID folderPickerModeID;
-    static jfieldID fileExclusivePickerModeID;
+    static jfieldID selectionModeID;
 
     static void Initialize(JNIEnv *env, jstring filterDescription);
     static void Show(void *peer);

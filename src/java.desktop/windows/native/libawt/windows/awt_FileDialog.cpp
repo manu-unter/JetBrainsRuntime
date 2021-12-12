@@ -29,6 +29,7 @@
 #include "awt_Dialog.h"
 #include "awt_Toolkit.h"
 #include "ComCtl32Util.h"
+#include "com_jetbrains_desktop_FileDialog.h"
 #include <commdlg.h>
 #include <cderr.h>
 #include <shlobj.h>
@@ -53,10 +54,10 @@ jfieldID AwtFileDialog::modeID;
 jfieldID AwtFileDialog::dirID;
 jfieldID AwtFileDialog::fileID;
 jfieldID AwtFileDialog::filterID;
+jfieldID AwtFileDialog::jbrDialogID;
 jfieldID AwtFileDialog::openButtonTextID;
 jfieldID AwtFileDialog::selectFolderButtonTextID;
-jfieldID AwtFileDialog::folderPickerModeID;
-jfieldID AwtFileDialog::fileExclusivePickerModeID;
+jfieldID AwtFileDialog::selectionModeID;
 
 class CoTaskStringHolder {
 public:
@@ -770,9 +771,9 @@ void AttachString(JNIEnv *env, const jstring string, SmartHolder<WCHAR[]> &holde
     }
 }
 
-void SaveCommonDialogLocalizationData(JNIEnv *env, const jobject fileDialog, FileDialogData &data) {
-    jstring openButtonText = static_cast<jstring>(env->GetObjectField(fileDialog, AwtFileDialog::openButtonTextID));
-    jstring selectFolderButtonText = static_cast<jstring>(env->GetObjectField(fileDialog, AwtFileDialog::selectFolderButtonTextID));
+void SaveCommonDialogLocalizationData(JNIEnv *env, const jobject jbrFileDialog, FileDialogData &data) {
+    jstring openButtonText = static_cast<jstring>(env->GetObjectField(jbrFileDialog, AwtFileDialog::openButtonTextID));
+    jstring selectFolderButtonText = static_cast<jstring>(env->GetObjectField(jbrFileDialog, AwtFileDialog::selectFolderButtonTextID));
 
     AttachString(env, openButtonText, data.openButtonText);
     AttachString(env, selectFolderButtonText, data.selectFolderButtonText);
@@ -922,12 +923,14 @@ AwtFileDialog::Show(void *p)
             GUID fileDialogMode = mode == java_awt_FileDialog_LOAD ? CLSID_FileOpenDialog : CLSID_FileSaveDialog;
             OLE_HRT(pfd.CreateInstance(fileDialogMode));
 
-            bool folderPickerMode = env->GetBooleanField(target, AwtFileDialog::folderPickerModeID);
-            bool fileExclusivePickerMode = env->GetBooleanField(target, AwtFileDialog::fileExclusivePickerModeID);
+            jobject jbrDialog = env->GetObjectField(target, AwtFileDialog::jbrDialogID);
+            jint selectionMode = env->GetIntField(jbrDialog, AwtFileDialog::selectionModeID);
+            bool folderPickerMode = selectionMode == com_jetbrains_desktop_FileDialog_SELECT_DIRECTORIES_ONLY;
+            bool fileExclusivePickerMode = selectionMode == com_jetbrains_desktop_FileDialog_SELECT_FILES_ONLY;
             data.ignoreCustomizations = folderPickerMode || fileExclusivePickerMode || mode == java_awt_FileDialog_SAVE;
             data.fileDialog = pfd;
             data.peer = peer;
-            SaveCommonDialogLocalizationData(env, target, data);
+            SaveCommonDialogLocalizationData(env, jbrDialog, data);
             OLE_HRT(CDialogEventHandler_CreateInstance(&data, IID_PPV_ARGS(&pfde)));
             OLE_HRT(pfd->Advise(pfde, &dwCookie));
 
@@ -1216,6 +1219,15 @@ Java_sun_awt_windows_WFileDialogPeer_initIDs(JNIEnv *env, jclass cls)
         env->GetFieldID(cls, "filter", "Ljava/io/FilenameFilter;");
     DASSERT(AwtFileDialog::filterID != NULL);
 
+    AwtFileDialog::jbrDialogID =
+        env->GetFieldID(cls, "jbrDialog", "Lcom/jetbrains/desktop/FileDialog;");
+    DASSERT(AwtFileDialog::jbrDialogID != NULL);
+    CHECK_NULL(AwtFileDialog::jbrDialogID);
+
+    /* com.jetbrains.desktop.FileDialog fields */
+    cls = env->FindClass("com/jetbrains/desktop/FileDialog");
+    CHECK_NULL(cls);
+
     AwtFileDialog::openButtonTextID =
         env->GetFieldID(cls, "openButtonText", "Ljava/lang/String;");
     DASSERT(AwtFileDialog::openButtonTextID != NULL);
@@ -1226,13 +1238,9 @@ Java_sun_awt_windows_WFileDialogPeer_initIDs(JNIEnv *env, jclass cls)
     DASSERT(AwtFileDialog::selectFolderButtonTextID != NULL);
     CHECK_NULL(AwtFileDialog::selectFolderButtonTextID);
 
-    AwtFileDialog::folderPickerModeID = env->GetFieldID(cls, "folderPickerMode", "Z");
-    DASSERT(AwtFileDialog::folderPickerModeID != NULL);
-    CHECK_NULL(AwtFileDialog::folderPickerModeID);
-
-    AwtFileDialog::fileExclusivePickerModeID = env->GetFieldID(cls, "fileExclusivePickerMode", "Z");
-    DASSERT(AwtFileDialog::fileExclusivePickerModeID != NULL);
-    CHECK_NULL(AwtFileDialog::fileExclusivePickerModeID);
+    AwtFileDialog::selectionModeID = env->GetFieldID(cls, "selectionMode", "I");
+    DASSERT(AwtFileDialog::selectionModeID != NULL);
+    CHECK_NULL(AwtFileDialog::selectionModeID);
 
     CATCH_BAD_ALLOC;
 }

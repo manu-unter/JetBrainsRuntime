@@ -643,43 +643,32 @@ public class FileDialog extends Dialog {
     }
 
     /**
-     * Text for "Open" button (used when common file dialogs are enabled on
-     * Windows).
-     */
-    private String openButtonText;
-
-    /**
-     * Text for "Select Folder" button (used when common file dialogs are
-     * enabled on Windows).
-     */
-    private String selectFolderButtonText;
-
-    /**
      * Called using reflection; sets localization strings used when common
      * file dialogs are enabled on Windows.
      */
+    @Deprecated(forRemoval = true)
     private void setLocalizationStrings(String openButtonText, String selectFolderButtonText) {
-        this.openButtonText = openButtonText;
-        this.selectFolderButtonText = selectFolderButtonText;
+        jbrDialog.openButtonText = openButtonText;
+        jbrDialog.selectFolderButtonText = selectFolderButtonText;
     }
 
-    /**
-     * Whether to enable folder picker mode (used when common file dialogs are
-     * enabled on Windows).
-     */
-    private boolean folderPickerMode;
-
+    @Deprecated(forRemoval = true)
     private void setFolderPickerMode(boolean folderPickerMode) {
-        this.folderPickerMode = folderPickerMode;
+        if (folderPickerMode) {
+            jbrDialog.selectionMode |= com.jetbrains.desktop.FileDialog.SELECT_DIRECTORIES_ONLY;
+        } else {
+            jbrDialog.selectionMode &= ~com.jetbrains.desktop.FileDialog.SELECT_DIRECTORIES_ONLY;
+        }
     }
 
-    /**
-     * Whether to enable exclusive file picker mode, with no folder picker
-     * available (used when common file dialogs are enabled on Windows).
-     */
-    private boolean fileExclusivePickerMode;
-
+    @Deprecated(forRemoval = true)
     private void setFileExclusivePickerMode(boolean fileExclusivePickerMode) {
-        this.fileExclusivePickerMode = fileExclusivePickerMode;
+        if (fileExclusivePickerMode) {
+            jbrDialog.selectionMode |= com.jetbrains.desktop.FileDialog.SELECT_FILES_ONLY;
+        } else {
+            jbrDialog.selectionMode &= ~com.jetbrains.desktop.FileDialog.SELECT_FILES_ONLY;
+        }
     }
+
+    private com.jetbrains.desktop.FileDialog jbrDialog;
 }

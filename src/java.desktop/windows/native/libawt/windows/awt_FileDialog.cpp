@@ -57,7 +57,7 @@ jfieldID AwtFileDialog::filterID;
 jfieldID AwtFileDialog::jbrDialogID;
 jfieldID AwtFileDialog::openButtonTextID;
 jfieldID AwtFileDialog::selectFolderButtonTextID;
-jfieldID AwtFileDialog::selectionModeID;
+jfieldID AwtFileDialog::hintsID;
 
 class CoTaskStringHolder {
 public:
@@ -747,16 +747,6 @@ HRESULT CreateShellItem(LPTSTR path, IShellItemPtr& shellItem) {
     return ::SHCreateItemInKnownFolder(FOLDERID_ComputerFolder, 0, path, IID_PPV_ARGS(&shellItem));
 }
 
-CoTaskStringHolder GetShortName(LPTSTR path) {
-    CoTaskStringHolder shortName;
-    OLE_TRY
-    IShellItemPtr shellItem;
-    OLE_HRT(CreateShellItem(path, shellItem));
-    OLE_HRT(shellItem->GetDisplayName(SIGDN_PARENTRELATIVE, &shortName));
-    OLE_CATCH
-    return SUCCEEDED(OLE_HR) ? shortName : CoTaskStringHolder();
-}
-
 void AttachString(JNIEnv *env, const jstring string, SmartHolder<WCHAR[]> &holder) {
     if (JNU_IsNull(env, string)) {
         holder.Attach(nullptr);
@@ -924,9 +914,12 @@ AwtFileDialog::Show(void *p)
             OLE_HRT(pfd.CreateInstance(fileDialogMode));
 
             jobject jbrDialog = env->GetObjectField(target, AwtFileDialog::jbrDialogID);
-            jint selectionMode = env->GetIntField(jbrDialog, AwtFileDialog::selectionModeID);
-            bool folderPickerMode = selectionMode == com_jetbrains_desktop_FileDialog_SELECT_DIRECTORIES_ONLY;
-            bool fileExclusivePickerMode = selectionMode == com_jetbrains_desktop_FileDialog_SELECT_FILES_ONLY;
+            jint hints = env->GetIntField(jbrDialog, AwtFileDialog::hintsID);
+            bool folderPickerMode = hints & com_jetbrains_desktop_FileDialog_SELECT_DIRECTORIES_HINT;
+            bool fileExclusivePickerMode = hints & com_jetbrains_desktop_FileDialog_SELECT_FILES_HINT;
+            if (folderPickerMode && fileExclusivePickerMode) {
+                folderPickerMode = fileExclusivePickerMode = false;
+            }
             data.ignoreCustomizations = folderPickerMode || fileExclusivePickerMode || mode == java_awt_FileDialog_SAVE;
             data.fileDialog = pfd;
             data.peer = peer;
@@ -961,12 +954,9 @@ AwtFileDialog::Show(void *p)
             }
 
             {
-                CoTaskStringHolder shortName = GetShortName(fileBuffer);
-                if (shortName) {
-                    OLE_TRY
-                    OLE_HRT(pfd->SetFileName(shortName));
-                    OLE_CATCH
-                }
+                OLE_TRY
+                OLE_HRT(pfd->SetFileName(fileBuffer));
+                OLE_CATCH
             }
 
             OLE_CATCH
@@ -988,6 +978,7 @@ AwtFileDialog::Show(void *p)
                     CoTaskStringHolder filePath;
                     OLE_HRT(psiResult->GetDisplayName(SIGDN_FILESYSPATH, &filePath));
                     size_t filePathLength = _tcslen(filePath);
+                    data.resultSize = filePathLength;
                     data.result.Attach(new TCHAR[filePathLength + 1]);
                     _tcscpy_s(data.result, filePathLength + 1, filePath);
                     OLE_CATCH
@@ -1238,9 +1229,9 @@ Java_sun_awt_windows_WFileDialogPeer_initIDs(JNIEnv *env, jclass cls)
     DASSERT(AwtFileDialog::selectFolderButtonTextID != NULL);
     CHECK_NULL(AwtFileDialog::selectFolderButtonTextID);
 
-    AwtFileDialog::selectionModeID = env->GetFieldID(cls, "selectionMode", "I");
-    DASSERT(AwtFileDialog::selectionModeID != NULL);
-    CHECK_NULL(AwtFileDialog::selectionModeID);
+    AwtFileDialog::hintsID = env->GetFieldID(cls, "hints", "I");
+    DASSERT(AwtFileDialog::hintsID != NULL);
+    CHECK_NULL(AwtFileDialog::hintsID);
 
     CATCH_BAD_ALLOC;
 }

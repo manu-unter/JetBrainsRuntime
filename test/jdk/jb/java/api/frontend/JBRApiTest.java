@@ -21,6 +21,7 @@
  */
 
 import com.jetbrains.JBR;
+import com.jetbrains.FileDialog;
 
 import java.awt.*;
 import java.lang.reflect.Field;
@@ -48,5 +49,6 @@ public class JBRApiTest {
 
     private static void testServices() {
         Objects.requireNonNull((Dimension) JBR.getExtendedGlyphCache().getSubpixelResolution());
+        Objects.requireNonNull(FileDialog.get(new java.awt.FileDialog((Frame) null)));
     }
 }

@@ -59,6 +59,8 @@ import sun.java2d.pipe.Region;
 import sun.security.action.GetBooleanAction;
 import sun.util.logging.PlatformLogger;
 
+import static com.jetbrains.desktop.FileDialog.*;
+
 class CFileDialog implements FileDialogPeer {
 
     private static final PlatformLogger log = PlatformLogger.getLogger("sun.lwawt.macosx.CFileDialog");
@@ -73,18 +75,15 @@ class CFileDialog implements FileDialogPeer {
                         new GetBooleanAction("apple.awt.use-file-dialog-packages"));
 
                 com.jetbrains.desktop.FileDialog jbrDialog = com.jetbrains.desktop.FileDialog.get(target);
-                boolean chooseDirectories, chooseFiles;
-                if (jbrDialog.selectionMode == com.jetbrains.desktop.FileDialog.SELECT_DEFAULT) {
+                boolean createDirectories = (jbrDialog.getHints() & CREATE_DIRECTORIES_HINT) != 0;
+                boolean chooseDirectories = (jbrDialog.getHints() & SELECT_DIRECTORIES_HINT) != 0;
+                boolean chooseFiles = (jbrDialog.getHints() & SELECT_FILES_HINT) != 0;
+                if (!chooseDirectories && !chooseFiles) { // Fallback to default
                     @SuppressWarnings("removal")
                     boolean dir = AccessController.doPrivileged(
                             new GetBooleanAction("apple.awt.fileDialogForDirectories"));
                     chooseFiles = !dir;
                     chooseDirectories = dir;
-                } else if (jbrDialog.selectionMode == com.jetbrains.desktop.FileDialog.SELECT_FILES_AND_DIRECTORIES) {
-                    chooseDirectories = chooseFiles = true;
-                } else {
-                    chooseFiles = jbrDialog.selectionMode == com.jetbrains.desktop.FileDialog.SELECT_FILES_ONLY;
-                    chooseDirectories = jbrDialog.selectionMode == com.jetbrains.desktop.FileDialog.SELECT_DIRECTORIES_ONLY;
                 }
 
                 int dialogMode = target.getMode();
@@ -99,7 +98,7 @@ class CFileDialog implements FileDialogPeer {
                         navigateApps,
                         chooseDirectories,
                         chooseFiles,
-                        jbrDialog.canCreateDirectories == null || jbrDialog.canCreateDirectories,
+                        createDirectories,
                         target.getFilenameFilter() != null,
                         target.getDirectory(),
                         target.getFile());

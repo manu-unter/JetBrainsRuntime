@@ -21,23 +21,19 @@ public class FileDialog implements Serializable {
         }
     }
     public static FileDialog get(java.awt.FileDialog dialog) {
-        FileDialog result = (FileDialog) getter.get(dialog);
-        if (result == null) getter.set(dialog, result = new FileDialog());
-        return result;
+        return (FileDialog) getter.get(dialog);
     }
-
-    @Native public static final int SELECT_DEFAULT = 0, SELECT_FILES_ONLY = 1,
-            SELECT_DIRECTORIES_ONLY = 2, SELECT_FILES_AND_DIRECTORIES = 3;
 
     /**
      * Whether to select files, directories or both (used when common file dialogs are enabled on Windows, or on macOS)
      */
-    public int selectionMode = SELECT_DEFAULT;
-
+    @Native public static final int SELECT_FILES_HINT = 1, SELECT_DIRECTORIES_HINT = 2;
     /**
      * Whether to allow creating directories or not (used on macOS)
      */
-    public Boolean canCreateDirectories;
+    @Native public static final int CREATE_DIRECTORIES_HINT = 4;
+
+    public int hints = CREATE_DIRECTORIES_HINT;
 
     /**
      * Text for "Open" button (used when common file dialogs are enabled on
@@ -51,18 +47,11 @@ public class FileDialog implements Serializable {
      */
     public String selectFolderButtonText;
 
-    public void setSelectionMode(boolean directories, boolean files) {
-        if (directories) {
-            if (files) selectionMode = SELECT_FILES_AND_DIRECTORIES;
-            else selectionMode = SELECT_DIRECTORIES_ONLY;
-        } else {
-            if (files) selectionMode = SELECT_FILES_ONLY;
-            else throw new IllegalArgumentException("(directories || files) == false");
-        }
+    public void setHints(int hints) {
+        this.hints = hints;
     }
-
-    public void setCanCreateDirectories(boolean value) {
-        this.canCreateDirectories = value;
+    public int getHints() {
+        return hints;
     }
 
     public void setLocalizationStrings(String openButtonText, String selectFolderButtonText) {

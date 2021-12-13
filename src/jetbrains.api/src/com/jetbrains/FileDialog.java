@@ -18,14 +18,28 @@ package com.jetbrains;
 
 public interface FileDialog {
 
+    /*CONST com.jetbrains.desktop.FileDialog.*_HINT*/
+
     static FileDialog get(java.awt.FileDialog dialog) {
         if (FileDialogService.INSTANCE == null) return null;
         else return FileDialogService.INSTANCE.getFileDialog(dialog);
     }
 
-    void setSelectionMode(boolean directories, boolean files);
+    /**
+     * Set JBR-specific file dialog hints:
+     * <ul>
+     *     <li>SELECT_FILES_HINT, SELECT_DIRECTORIES_HINT - Whether to select files, directories or both
+     *     (used when common file dialogs are enabled on Windows, or on macOS),
+     *     both unset bits are treated as a default platform-specific behavior</li>
+     *     <li>CREATE_DIRECTORIES_HINT - Whether to allow creating directories or not (used on macOS)</li>
+     * </ul>
+     */
+    void setHints(int hints);
 
-    void setCanCreateDirectories(boolean value);
+    /**
+     * @see #setHints(int) 
+     */
+    int getHints();
 
     void setLocalizationStrings(String openButtonText, String selectFolderButtonText);
 }

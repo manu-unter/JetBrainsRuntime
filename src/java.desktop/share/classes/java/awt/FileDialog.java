@@ -654,21 +654,24 @@ public class FileDialog extends Dialog {
 
     @Deprecated(forRemoval = true)
     private void setFolderPickerMode(boolean folderPickerMode) {
+        int hints = jbrDialog.getHints();
         if (folderPickerMode) {
-            jbrDialog.selectionMode |= com.jetbrains.desktop.FileDialog.SELECT_DIRECTORIES_ONLY;
+            hints |= com.jetbrains.desktop.FileDialog.SELECT_DIRECTORIES_HINT;
         } else {
-            jbrDialog.selectionMode &= ~com.jetbrains.desktop.FileDialog.SELECT_DIRECTORIES_ONLY;
+            hints &= ~com.jetbrains.desktop.FileDialog.SELECT_DIRECTORIES_HINT;
         }
     }
 
     @Deprecated(forRemoval = true)
     private void setFileExclusivePickerMode(boolean fileExclusivePickerMode) {
+        int hints = jbrDialog.getHints();
         if (fileExclusivePickerMode) {
-            jbrDialog.selectionMode |= com.jetbrains.desktop.FileDialog.SELECT_FILES_ONLY;
+            hints |= com.jetbrains.desktop.FileDialog.SELECT_FILES_HINT;
         } else {
-            jbrDialog.selectionMode &= ~com.jetbrains.desktop.FileDialog.SELECT_FILES_ONLY;
+            hints &= ~com.jetbrains.desktop.FileDialog.SELECT_FILES_HINT;
+            jbrDialog.setHints(hints);
         }
     }
 
-    private com.jetbrains.desktop.FileDialog jbrDialog;
+    private final com.jetbrains.desktop.FileDialog jbrDialog = new com.jetbrains.desktop.FileDialog();
 }

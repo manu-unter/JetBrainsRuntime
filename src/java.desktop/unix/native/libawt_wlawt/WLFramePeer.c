@@ -92,7 +92,7 @@ static const struct wl_buffer_listener wl_buffer_listener = {
         .release = wl_buffer_release,
 };
 
-static struct wl_buffer *createBuffer(int width, int height) {
+static struct wl_buffer *createBuffer(jobject obj, int width, int height) {
     if (width <= 0) {
         width = 1;
     }
@@ -106,12 +106,27 @@ static struct wl_buffer *createBuffer(int width, int height) {
     if (fd == -1) {
         return NULL;
     }
+    uint32_t *data = (uint32_t *)(mmap(NULL, size,
+                                                  PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+    if (data == MAP_FAILED) {
+        close(fd);
+        return NULL;
+    }
 
     struct wl_shm_pool *pool = wl_shm_create_pool(wl_shm, fd, size);
     struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
-
+    /* Draw checkerboxed background */
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if ((x + y / 8 * 8) % 16 < 8)
+                data[y * width + x] = 0xFF666666;
+            else
+                data[y * width + x] = 0xFFEEEEEE;
+        }
+    }
+    munmap(data, size);
     wl_buffer_add_listener(buffer, &wl_buffer_listener, NULL);
     return buffer;
 }
@@ -181,7 +196,7 @@ Java_sun_awt_wl_WLFramePeer_nativeShowFrame
     xdg_toplevel_add_listener(frame->xdg_toplevel, &xdg_toplevel_listener, frame);
     wl_surface_commit(frame->wl_surface);
     wl_display_roundtrip(wl_display); // this should process 'configure' event, and send 'ack_configure' in response
-    wl_surface_attach(frame->wl_surface, createBuffer(width, height), 0, 0);
+    wl_surface_attach(frame->wl_surface, createBuffer(obj, width, height), 0, 0);
     wl_surface_commit(frame->wl_surface);
 }
 

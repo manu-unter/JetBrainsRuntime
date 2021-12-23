@@ -31,7 +31,9 @@ struct _WLSDOps {
     SurfaceDataOps      sdOps;
     jboolean            invalid;
     jobject             peer;
-    jlong               drawable;
+    jlong               wl_surface;
+    jint                bgPixel;
+    jboolean            isBgInitialized;
 };
 
 /*

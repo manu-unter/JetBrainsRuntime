@@ -37,12 +37,19 @@ public class WLFramePeer implements FramePeer {
     private long nativePtr;
     SurfaceData surfaceData;
     private WLGraphicsConfig graphicsConfig;
+
+    static {
+        initIDs();
+    }
+
     public WLFramePeer(Frame target) {
         this.target = target;
         this.nativePtr = nativeCreateFrame();
         initGraphicsConfiguration();
         this.surfaceData = graphicsConfig.createSurfaceData(this);
     }
+
+    private static native void initIDs();
 
     public Frame getTarget() {
         return target;
@@ -365,6 +372,8 @@ public class WLFramePeer implements FramePeer {
     private native void nativeShowFrame(long ptr, int width, int height);
     private native void nativeHideFrame(long ptr);
     private native void nativeDisposeFrame(long ptr);
+
+    private native long getWLSurface();
 
     // called from native code
     private void postWindowClosing() {

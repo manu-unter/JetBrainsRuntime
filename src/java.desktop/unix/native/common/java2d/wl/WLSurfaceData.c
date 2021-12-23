@@ -29,7 +29,7 @@
 /*
  * Class:     sun_java2d_wl_WLSurfaceData
  * Method:    initSurface
- * Signature: ()V
+ * Signature: (IIIJ)V
  */
 JNIEXPORT void JNICALL
 Java_sun_java2d_wl_WLSurfaceData_initSurface(JNIEnv *env, jclass wsd,
@@ -57,5 +57,37 @@ WLSurfaceData_GetOps(JNIEnv *env, jobject sData)
         ops = NULL;
     }
     return (WLSDOps *) ops;
+#endif /* !HEADLESS */
+}
+
+/*
+ * Class:     sun_java2d_wl_WLSurfaceData
+ * Method:    initOps
+ * Signature: (Ljava/lang/Object;Ljava/lang/Object;I)V
+ */
+JNIEXPORT void JNICALL
+Java_sun_java2d_wl_WLSurfaceData_initOps(JNIEnv *env, jobject wsd,
+                                         jobject peer,
+                                         jobject graphicsConfig, jint depth)
+{
+#ifndef HEADLESS
+
+    WLSDOps *wsdo = (WLSDOps*)SurfaceData_InitOps(env, wsd, sizeof(WLSDOps));
+    jboolean hasException;
+    if (wsdo == NULL) {
+        JNU_ThrowOutOfMemoryError(env, "Initialization of SurfaceData failed.");
+        return;
+    }
+    if (peer != NULL) {
+        wsdo->wl_surface = JNU_CallMethodByName(env, &hasException, peer, "getWLSurface", "()J").j;
+        if (hasException) {
+            return;
+        }
+    } else {
+        wsdo->wl_surface = 0;
+    }
+    wsdo->bgPixel = 0;
+    wsdo->isBgInitialized = JNI_FALSE;
+
 #endif /* !HEADLESS */
 }

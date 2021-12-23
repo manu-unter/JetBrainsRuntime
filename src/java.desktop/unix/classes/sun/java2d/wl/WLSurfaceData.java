@@ -29,6 +29,7 @@ public class WLSurfaceData extends SurfaceData {
     this.peer = peer;
     this.graphicsConfig = gc;
     this.depth = cm.getPixelSize();
+    initOps(peer, graphicsConfig, depth);
   }
 
   /**

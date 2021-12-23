@@ -32,7 +32,10 @@
 #include <sys/mman.h>
 #include <jni.h>
 
+#include "jni_util.h"
 #include "WLToolkit.h"
+
+jfieldID nativePtrID;
 
 struct WLFrame {
     jobject nativeFramePeer; // weak reference
@@ -171,6 +174,14 @@ static const struct xdg_toplevel_listener xdg_toplevel_listener = {
         .close = xdg_toplevel_close,
 };
 
+
+JNIEXPORT void JNICALL
+Java_sun_awt_wl_WLFramePeer_initIDs
+        (JNIEnv *env, jclass clazz)
+{
+    CHECK_NULL(nativePtrID = (*env)->GetFieldID(env, clazz, "nativePtr", "J"));
+}
+
 JNIEXPORT jlong JNICALL
 Java_sun_awt_wl_WLFramePeer_nativeCreateFrame
   (JNIEnv *env, jobject obj)
@@ -227,4 +238,10 @@ Java_sun_awt_wl_WLFramePeer_nativeDisposeFrame
     doHide(frame);
     (*env)->DeleteWeakGlobalRef(env, frame->nativeFramePeer);
     free(frame);
+}
+
+JNIEXPORT jlong JNICALL Java_sun_awt_wl_WLFramePeer_getWLSurface
+  (JNIEnv *env, jobject obj)
+{
+    return (jlong)((struct WLFrame*)(*env)->GetLongField(env, obj, nativePtrID))->wl_surface;
 }

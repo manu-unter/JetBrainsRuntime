@@ -159,11 +159,8 @@ Java_sun_java2d_wl_WLSurfaceData_initSurface(JNIEnv *env, jobject wsd,
     if (!wsdo->wl_surface) {
         wsdo->wl_surface = JNU_CallMethodByName(env, &hasException, peer, "getWLSurface", "()J").j;
     }
-    fprintf(stderr, "Java_sun_java2d_wl_WLSurfaceData_initSurface %x\n", rgb);
     wl_surface_attach((struct wl_surface*)wsdo->wl_surface, createBuffer(rgb, width, height), 0, 0);
-    fprintf(stderr, "1\n");
     wl_surface_commit((struct wl_surface*)wsdo->wl_surface);
-    fprintf(stderr, "2\n");
 
 #endif /* !HEADLESS */
 }

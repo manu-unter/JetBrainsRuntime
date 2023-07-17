@@ -159,12 +159,33 @@ define SetupBuildLauncherBody
       LDFLAGS_linux := $$(call SET_EXECUTABLE_ORIGIN,/../lib) \
           -L$(call FindLibDirForModule, java.base), \
       LDFLAGS_macosx := $$(call SET_EXECUTABLE_ORIGIN,/../lib) \
-          -L$(call FindLibDirForModule, java.base), \
+          -L$(call FindLibDirForModule, java.base) \
+          -L$(TOPDIR)/lib/common/modules/macos-aarch64/ \
+          -force_load $(TOPDIR)/lib/common/modules/macos-aarch64/libskiko.a \
+          -force_load $(TOPDIR)/lib/common/modules/macos-aarch64/libskia.a, \
       LDFLAGS_aix := -L$(SUPPORT_OUTPUTDIR)/native/java.base, \
       LIBS := $(JDKEXE_LIBS) $$($1_LIBS), \
       LIBS_linux := -ljli -lpthread $(LIBDL), \
-      LIBS_macosx := -ljli -framework Cocoa -framework Security \
-          -framework ApplicationServices, \
+      LIBS_macosx := -ljli \
+          -lc++ \
+          -lskia \
+          -lskunicode \
+          -lskshaper \
+          -lskparagraph \
+          -lsksg \
+          -lskottie \
+          -lsvg \
+          -lskiko \
+          -framework Cocoa -framework Security \
+          -framework ApplicationServices \
+          -framework Foundation \
+          -framework CoreGraphics \
+          -framework CoreText \
+          -framework CoreServices \
+          -framework Metal \
+          -framework IOKit \
+          -framework QuartzCore \
+          -framework OpenGL, \
       LIBS_aix := -ljli_static, \
       LIBS_windows := $$($1_WINDOWS_JLI_LIB) \
           $(SUPPORT_OUTPUTDIR)/native/java.base/libjava/java.lib, \

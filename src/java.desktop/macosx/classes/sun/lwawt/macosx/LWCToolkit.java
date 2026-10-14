@@ -101,6 +101,8 @@ import sun.awt.util.ThreadGroupUtils;
 import sun.java2d.MacOSFlags;
 import sun.java2d.metal.MTLRenderQueue;
 import sun.java2d.opengl.OGLRenderQueue;
+import sun.java2d.skia.SKEnvironment;
+import sun.java2d.skia.SKRenderQueue;
 import sun.java2d.pipe.RenderQueue;
 import sun.lwawt.LWComponentPeerAPI;
 import sun.lwawt.LWCursorManager;
@@ -564,6 +566,9 @@ public final class LWCToolkit extends LWToolkit {
         // flush the rendering pipeline
         if (CGraphicsEnvironment.usingMetalPipeline()) {
             MTLRenderQueue.sync();
+            if (SKEnvironment.isSkiaEnabled()) {
+                SKRenderQueue.sync();
+            }
         } else {
             OGLRenderQueue.sync();
         }

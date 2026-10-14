@@ -35,6 +35,7 @@ public class MacOSFlags {
      * Description of command-line flags.  All flags with [true|false]
      * values
      *      metalEnabled: usage: "-Dsun.java2d.metal=[true|false]"
+     *      skiaEnabled:  usage: "-Dsun.java2d.skia=[true|false]" (implies metal)
      */
 
     private static boolean oglEnabled;
@@ -86,6 +87,13 @@ public class MacOSFlags {
     private static void initJavaFlags() {
         PropertyState oglState = getBooleanProp("sun.java2d.opengl", PropertyState.UNSPECIFIED);
         PropertyState metalState = getBooleanProp("sun.java2d.metal", PropertyState.UNSPECIFIED);
+
+        // The Skia backend renders into the Metal pipeline's surfaces and
+        // layers, so requesting it selects Metal whatever the OpenGL flag says.
+        if ("true".equalsIgnoreCase(System.getProperty("sun.java2d.skia"))) {
+            metalState = PropertyState.ENABLED;
+            oglState = PropertyState.DISABLED;
+        }
 
         // Handle invalid combinations to use the default rendering pipeline
         // The default rendering pipeline is Metal

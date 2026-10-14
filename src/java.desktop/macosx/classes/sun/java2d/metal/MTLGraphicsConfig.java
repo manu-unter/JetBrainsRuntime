@@ -36,6 +36,12 @@ import sun.java2d.Disposer;
 import sun.java2d.DisposerRecord;
 import sun.java2d.Surface;
 import sun.java2d.SurfaceData;
+import sun.java2d.pipe.BufferedContext;
+import sun.java2d.skia.SKContext;
+import sun.java2d.skia.SKEnvironment;
+import sun.java2d.skia.SKRenderQueue;
+import sun.java2d.skia.SKSurfaceData;
+import sun.java2d.skia.SKVolatileSurfaceManager;
 import sun.java2d.pipe.hw.AccelGraphicsConfig;
 import sun.java2d.pipe.hw.AccelSurface;
 import sun.java2d.pipe.hw.AccelTypedVolatileImage;
@@ -159,7 +165,17 @@ public final class MTLGraphicsConfig extends CGraphicsConfig
      * @see sun.java2d.pipe.hw.BufferedContextProvider#getContext
      */
     @Override
-    public MTLContext getContext() {
+    public BufferedContext getContext() {
+        // With the Skia backend, everything that must be serialized with
+        // rendering (font strike disposal, flushAndInvokeNow) belongs to the
+        // Skia queue, not the Metal one.
+        if (SKEnvironment.isSkiaEnabled()) {
+            return SKContext.forConfig(this);
+        }
+        return context;
+    }
+
+    public MTLContext getMTLContext() {
         return context;
     }
 
@@ -202,6 +218,10 @@ public final class MTLGraphicsConfig extends CGraphicsConfig
         }
         public void dispose() {
             if (pCfgInfo != 0) {
+                if (SKEnvironment.isSkiaEnabled()) {
+                    // reads info->context, so before the Metal side frees it
+                    SKRenderQueue.disposeGraphicsConfig(pCfgInfo);
+                }
                 MTLRenderQueue.disposeGraphicsConfig(pCfgInfo);
                 pCfgInfo = 0;
             }
@@ -215,6 +235,9 @@ public final class MTLGraphicsConfig extends CGraphicsConfig
 
     @Override
     public SurfaceData createSurfaceData(CFRetainedResource layer) {
+        if (SKEnvironment.isSkiaEnabled()) {
+            return SKSurfaceData.createData((MTLLayer) layer);
+        }
         return MTLSurfaceData.createData((MTLLayer) layer);
     }
 
@@ -309,6 +332,9 @@ public final class MTLGraphicsConfig extends CGraphicsConfig
     @Override
     public VolatileSurfaceManager createVolatileManager(SunVolatileImage image,
                                                         Object context) {
+        if (SKEnvironment.isSkiaEnabled()) {
+            return new SKVolatileSurfaceManager(image, context);
+        }
         return new MTLVolatileSurfaceManager(image, context);
     }
 }

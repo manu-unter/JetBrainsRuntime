@@ -190,6 +190,15 @@ public final class WindowsFlags {
                 oglEnabled = false;
             }
         }
+        if (getBooleanProp("sun.java2d.skia", false)) {
+            // the Skia pipeline (Graphite on Dawn) takes the screen; D3D's
+            // screen update manager would otherwise claim the windows
+            if (d3dEnabled && isBooleanPropTrueVerbose("sun.java2d.skia")) {
+                System.out.println("Direct3D pipeline disabled: Skia pipeline requested");
+            }
+            d3dEnabled = false;
+            d3dOnScreenEnabled = false;
+        }
         gdiBlitEnabled = getBooleanProp("sun.java2d.gdiBlit", true);
         d3dSet = getPropertySet("sun.java2d.d3d");
         if (d3dSet) {

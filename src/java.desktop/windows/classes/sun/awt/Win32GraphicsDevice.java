@@ -44,6 +44,8 @@ import sun.awt.image.SurfaceManager;
 import sun.awt.windows.WWindowPeer;
 import sun.java2d.SunGraphicsEnvironment;
 import sun.java2d.opengl.WGLGraphicsConfig;
+import sun.java2d.skia.SKEnvironment;
+import sun.java2d.skia.Win32SKGraphicsConfig;
 import sun.java2d.windows.WindowsFlags;
 
 import static java.awt.peer.ComponentPeer.SET_BOUNDS;
@@ -210,7 +212,8 @@ public class Win32GraphicsDevice extends GraphicsDevice implements
     @Override
     public GraphicsConfiguration[] getConfigurations() {
         if (configs==null) {
-            if (WindowsFlags.isOGLEnabled() && isDefaultDevice()) {
+            if ((WindowsFlags.isOGLEnabled() || SKEnvironment.isSkiaEnabled()) && isDefaultDevice()) {
+                // one accelerated configuration, which is also the default one
                 defaultConfig = getDefaultConfiguration();
                 if (defaultConfig != null) {
                     configs = new GraphicsConfiguration[1];
@@ -302,11 +305,16 @@ public class Win32GraphicsDevice extends GraphicsDevice implements
     @Override
     public GraphicsConfiguration getDefaultConfiguration() {
         if (defaultConfig == null) {
+            // the experimental Skia backend (Graphite on Dawn) takes the
+            // default device like OpenGL does; the other screens stay on GDI
+            if (SKEnvironment.isSkiaEnabled() && isDefaultDevice()) {
+                defaultConfig = Win32SKGraphicsConfig.getConfig(this);
+            }
             // first try to create a WGLGraphicsConfig if OGL is enabled
             // REMIND: the WGL code does not yet work properly in multimon
             // situations, so we will fallback on GDI if we are not on the
             // default device...
-            if (WindowsFlags.isOGLEnabled() && isDefaultDevice()) {
+            if (defaultConfig == null && WindowsFlags.isOGLEnabled() && isDefaultDevice()) {
                 int defPixID = WGLGraphicsConfig.getDefaultPixFmt(screen);
                 defaultConfig = WGLGraphicsConfig.getConfig(this, defPixID);
                 if (WindowsFlags.isOGLVerbose()) {

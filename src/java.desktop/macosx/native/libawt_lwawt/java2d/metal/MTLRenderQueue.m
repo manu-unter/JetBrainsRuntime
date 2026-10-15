@@ -26,6 +26,8 @@
 #include <stdlib.h>
 
 #include "sun_java2d_pipe_BufferedOpCodes.h"
+#include "java_awt_AlphaComposite.h"
+#include "sun_java2d_SunGraphics2D.h"
 
 #include "jlong.h"
 #include "MTLBlitLoops.h"
@@ -37,6 +39,7 @@
 #include "MTLRenderer.h"
 #include "MTLTextRenderer.h"
 #include "MTLUtils.h"
+#import "MTLOptions.h"
 #import "ThreadUtilities.h"
 
 #define TRACE_OP    0
@@ -49,6 +52,26 @@ static BMTLSDOps *dstOps = NULL;
 jint mtlPreviousOp = MTL_OP_INIT;
 
 extern BOOL isDisplaySyncEnabled();
+
+
+// The optional commits are skipped only while the state is SrcOver with a
+// colour or gradient paint, where nothing read back depends on them. XOR reads
+// the framebuffer in the shader, and the other composite rules and texture
+// paints render differently without the commits, so they keep the shipped
+// behaviour; once such an operation has been encoded, the command buffer it
+// is in commits at the next optional point as before (see nonCoalescable).
+static BOOL canCoalesceCommit(MTLContext *mtlc) {
+    if (!MTLOptions_CoalesceCommits()) {
+        return NO;
+    }
+    if ([mtlc useXORComposite]
+        || [mtlc.composite getCompositeState] != sun_java2d_SunGraphics2D_COMP_ALPHA
+        || [mtlc.composite getRule] != java_awt_AlphaComposite_SRC_OVER
+        || [mtlc.paint isKindOfClass:[MTLTexturePaint class]]) {
+        return NO;
+    }
+    return YES;
+}
 extern void MTLGC_DestroyMTLGraphicsConfig(jlong pConfigInfo);
 
 static const char* mtlOpCodeToStr(uint opcode);
@@ -147,11 +170,16 @@ void MTLRenderQueue_CheckPreviousOp(jint op) {
     if (mtlc != NULL) {
         [mtlc.encoderManager endEncoder];
 
-        if (op == MTL_OP_RESET_PAINT || op == MTL_OP_SYNC || op == MTL_OP_SHAPE_CLIP_SPANS ||
-            mtlPreviousOp == MTL_OP_MASK_OP)
+        // sticky until the next commit: an operation encoded under a state that
+        // needs the intermediate commits keeps them for its whole command buffer
+        static BOOL nonCoalescable = YES;
+        nonCoalescable |= !canCoalesceCommit(mtlc);
+        const BOOL mustCommit = op == MTL_OP_SYNC || op == MTL_OP_SHAPE_CLIP_SPANS;
+        if (mustCommit ||
+            (nonCoalescable && (op == MTL_OP_RESET_PAINT || mtlPreviousOp == MTL_OP_MASK_OP)))
         {
-            [mtlc commitCommandBuffer:(op == MTL_OP_SYNC || op == MTL_OP_SHAPE_CLIP_SPANS)
-                              display:NO];
+            [mtlc commitCommandBuffer:mustCommit display:NO];
+            nonCoalescable = NO;
         }
     }
     mtlPreviousOp = op;

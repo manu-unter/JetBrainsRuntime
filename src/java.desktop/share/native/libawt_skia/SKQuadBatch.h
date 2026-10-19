@@ -47,8 +47,22 @@
 // atlas the paint's shader is sampled in canvas coordinates; with an atlas the
 // quads carry texture coordinates and the atlas is the paint's shader: an
 // alpha-only atlas takes the paint colour, an RGB atlas feeds the blender.
+// Two draws of every mesh instead of one, for sources that blend per colour
+// channel without reading the destination (LCD text as DirectWrite composites
+// it): each pass gets its blend mode and a shader built over the atlas shader
+// for the batch's paint (its colour).
+struct SKQuadBatchTwoPass {
+    std::function<sk_sp<SkShader>(const sk_sp<SkShader> &atlas, const SkPaint &paint)> firstShader;
+    std::function<sk_sp<SkShader>(const sk_sp<SkShader> &atlas, const SkPaint &paint)> secondShader;
+    SkBlendMode firstBlend = SkBlendMode::kModulate;
+    SkBlendMode secondBlend = SkBlendMode::kPlus;
+    int key = 0;   // part of the batch key: what else the shaders depend on (the LCD contrast)
+};
+
 class SKQuadBatch {
 public:
+    using TwoPass = SKQuadBatchTwoPass;
+
     SKQuadBatch() {
         positions.reserve(4 * 1024);
         texCoords.reserve(4 * 1024);
@@ -66,19 +80,23 @@ public:
     // Plain quads keep a batch per colour: a coloured-vertex mesh costs more
     // than their separate draws (measured on D3D11). Blenders that take the
     // colour as a uniform (LCD, XOR) keep a batch per colour too.
-    void begin(SkCanvas *c, const SkPaint &p, const sk_sp<SkImage> &atlas = nullptr) {
+    void begin(SkCanvas *c, const SkPaint &p, const sk_sp<SkImage> &atlas = nullptr, const TwoPass *passes = nullptr) {
         // A runtime blender (XOR, LCD) reads the destination. Backends without
         // framebuffer fetch (Dawn on D3D11) read it from a copy taken before the
         // draw, so overlapping quads of one draw would all see the state before
         // any of them (a crossing of two XOR strokes stays XORed once, the second
         // of two overlapping LCD glyphs loses the first's coverage): a quad that
-        // overlaps a pending one starts a new draw (push()).
-        splitOnOverlap = !p.asBlendMode().has_value();
-        const bool mergeColors = atlas != nullptr && p.getShader() == nullptr && p.asBlendMode().has_value()
-                                 && p.getColorFilter() == nullptr && p.getMaskFilter() == nullptr;
+        // overlaps a pending one starts a new draw (push()). Two passes over one
+        // mesh are not sequential either (both quads' second passes add to the
+        // product of their first), so they split on overlap too.
+        splitOnOverlap = !p.asBlendMode().has_value() || passes != nullptr;
+        const bool mergeColors = atlas != nullptr && passes == nullptr && p.getShader() == nullptr
+                                 && p.asBlendMode().has_value() && p.getColorFilter() == nullptr
+                                 && p.getMaskFilter() == nullptr;
         // begin() runs per primitive (thousands per frame): no paint copy on the
         // plain path; with merged colours the key is the paint in white
-        bool same = canvas == c && atlasImage.get() == atlas.get();
+        bool same = canvas == c && atlasImage.get() == atlas.get() && twoPass == passes
+                    && twoPassKey == (passes != nullptr ? passes->key : 0);
         if (same) {
             if (mergeColors) {
                 SkPaint key = p;
@@ -107,10 +125,21 @@ public:
         color = p.getColor();
         colorPerVertex = false;
         atlasImage = atlas;
+        twoPass = passes;
+        twoPassKey = passes != nullptr ? passes->key : 0;
         meshPaint = p;
         if (atlas) {
-            meshPaint.setShader(atlas->makeShader(SkTileMode::kClamp, SkTileMode::kClamp,
-                                                  SkSamplingOptions(SkFilterMode::kNearest)));
+            sk_sp<SkShader> atlasShader = atlas->makeShader(SkTileMode::kClamp, SkTileMode::kClamp,
+                                                            SkSamplingOptions(SkFilterMode::kNearest));
+            if (passes != nullptr) {
+                meshPaint.setShader(passes->firstShader(atlasShader, p));
+                meshPaint.setBlendMode(passes->firstBlend);
+                secondPaint = p;
+                secondPaint.setShader(passes->secondShader(atlasShader, p));
+                secondPaint.setBlendMode(passes->secondBlend);
+            } else {
+                meshPaint.setShader(std::move(atlasShader));
+            }
         }
     }
 
@@ -208,6 +237,9 @@ private:
                 canvas->drawVertices(mesh, SkBlendMode::kModulate, white);
             } else {
                 canvas->drawVertices(mesh, SkBlendMode::kModulate, meshPaint);
+                if (twoPass != nullptr) {
+                    canvas->drawVertices(mesh, SkBlendMode::kModulate, secondPaint);
+                }
             }
         }
         positions.clear();
@@ -220,6 +252,9 @@ private:
     SkCanvas *canvas = nullptr;
     SkPaint paint;          // the batch key: the paint, colour white if colours are merged
     SkPaint meshPaint;      // the first paint of the batch, with the atlas as its shader
+    SkPaint secondPaint;    // the second pass (TwoPass)
+    const TwoPass *twoPass = nullptr;
+    int twoPassKey = 0;
     bool colorPerVertex = false;     // a second colour arrived: `colors` is filled
     bool splitOnOverlap = false;     // the paint has a runtime blender: overlapping quads do not share a draw
     std::vector<SkRect> pendingBounds;   // device bounds of the pending quads while splitOnOverlap

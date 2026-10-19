@@ -109,8 +109,8 @@ bool SKGlyphCache_Fits(const SKGlyphCache *gc, const GlyphInfo *glyph) {
     return gc != nullptr && glyph->width <= CELL_SIZE && glyph->height <= CELL_SIZE;
 }
 
-void SKGlyphCache_Begin(SKGlyphCache *gc, SkCanvas *canvas, const SkPaint &paint) {
-    gc->batch.begin(canvas, paint, gc->atlasImage);
+void SKGlyphCache_Begin(SKGlyphCache *gc, SkCanvas *canvas, const SkPaint &paint, const SKQuadBatchTwoPass *passes) {
+    gc->batch.begin(canvas, paint, gc->atlasImage, passes);
 }
 
 static void upload(SKGlyphCache *gc, const GlyphInfo *glyph, const CacheCellInfo *cell, jint subimage, jboolean rgbOrder) {

@@ -36,12 +36,17 @@
 #include "include/core/SkSurface.h"
 #include "include/gpu/graphite/Surface.h"
 
+#include <algorithm>
 #include <vector>
 
 // Same geometry as MTLTextRenderer's caches, twice the side: an IDE frame holds
 // far more distinct glyphs than 256 cells.
 static const jint CACHE_SIZE = 1024;
 static const jint CELL_SIZE  = 32;
+static const jint CELLS_PER_ROW = CACHE_SIZE / CELL_SIZE;
+// Coverage up to this is the LCD filter's spill into the padding, not ink: it
+// does not count for the overlap test of two glyphs.
+static const unsigned char INK_THRESHOLD = 8;
 
 struct SKGlyphCache {
     SKConfigContext *cc = nullptr;
@@ -57,7 +62,35 @@ struct SKGlyphCache {
     SkPaint paint;
     const SKQuadBatchTwoPass *passes = nullptr;
     std::vector<unsigned char> lcdRow;   // RGB -> RGBA conversion buffer
+    // Per cell, the part of the glyph image above INK_THRESHOLD, relative to
+    // the glyph's origin: what SKQuadBatch tests for overlap.
+    std::vector<SkIRect> ink;
 };
+
+static inline size_t cellIndex(const CacheCellInfo *cell) {
+    return (size_t) (cell->y / CELL_SIZE) * CELLS_PER_ROW + (size_t) (cell->x / CELL_SIZE);
+}
+
+// Tight bounds of the pixels above the threshold; bytesPerPixel channels each.
+static SkIRect inkBounds(const unsigned char *image, int w, int h, size_t rowBytes, int bytesPerPixel) {
+    int left = w, top = h, right = 0, bottom = 0;
+    for (int row = 0; row < h; row++) {
+        const unsigned char *px = image + (size_t) row * rowBytes;
+        for (int col = 0; col < w; col++, px += bytesPerPixel) {
+            bool ink = false;
+            for (int c = 0; c < bytesPerPixel; c++) {
+                ink |= px[c] > INK_THRESHOLD;
+            }
+            if (ink) {
+                left = std::min(left, col);
+                right = std::max(right, col + 1);
+                top = std::min(top, row);
+                bottom = row + 1;
+            }
+        }
+    }
+    return left < right ? SkIRect::MakeLTRB(left, top, right, bottom) : SkIRect::MakeEmpty();
+}
 
 // AccelGlyphCache's flush callback takes no context: the cache that is adding
 // a glyph (and may therefore evict) is the one being flushed.
@@ -90,6 +123,7 @@ SKGlyphCache *SKGlyphCache_Create(SKConfigContext *cc, bool lcd) {
     auto *gc = new SKGlyphCache();
     gc->cc = cc;
     gc->lcd = lcd;
+    gc->ink.resize((size_t) CELLS_PER_ROW * CELLS_PER_ROW, SkIRect::MakeEmpty());
     gc->info = AccelGlyphCache_Init(CACHE_SIZE, CACHE_SIZE, CELL_SIZE, CELL_SIZE, flushForEviction);
     if (gc->info == nullptr) {
         delete gc;
@@ -127,9 +161,11 @@ static void upload(SKGlyphCache *gc, const GlyphInfo *glyph, const CacheCellInfo
         const unsigned char *data = glyph->image + (size_t) glyph->rowBytes * h * subimage;
         SkPixmap pm(SkImageInfo::MakeA8(w, h), data, glyph->rowBytes);
         gc->atlas->writePixels(pm, cell->x, cell->y);
+        gc->ink[cellIndex(cell)] = inkBounds(data, w, h, glyph->rowBytes, 1);
         return;
     }
     // LCD glyph: 3 bytes of coverage per pixel, in the order the strike asked for.
+    gc->ink[cellIndex(cell)] = inkBounds(glyph->image, w, h, glyph->rowBytes, 3);
     gc->lcdRow.resize((size_t) w * h * 4);
     for (int row = 0; row < h; row++) {
         const unsigned char *src = glyph->image + (size_t) row * glyph->rowBytes;
@@ -166,7 +202,7 @@ bool SKGlyphCache_Draw(SKGlyphCache *gc, GlyphInfo *glyph, jint subimage, jboole
     if (!gc->batch.active()) {
         gc->batch.begin(gc->canvas, gc->paint, gc->atlasImage, gc->passes);
     }
-    gc->batch.addSprite(x, y, glyph->width, glyph->height, cell->x, cell->y);
+    gc->batch.addSprite(x, y, glyph->width, glyph->height, cell->x, cell->y, &gc->ink[cellIndex(cell)]);
     return true;
 }
 

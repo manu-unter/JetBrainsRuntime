@@ -26,8 +26,8 @@
  * @key headful
  * @summary LCD text on a GPU pipeline against the software loops, on
  *          light, dark and mid-tone backgrounds in several text colours,
- *          with a second string drawn over the first so that glyphs of two
- *          lists overlap inside one batch. The blender mode reads the
+ *          with a second and a third string drawn over the first so that
+ *          glyphs of two and three lists overlap inside one batch. The blender mode reads the
  *          destination and reproduces the loops' per-channel gamma blend
  *          closely; the two-pass mode folds the gamma correction into the
  *          coverage and is allowed a few levels at glyph edges. Overlapping
@@ -71,18 +71,19 @@ public class LcdTextBackgroundsTest {
         StringBuilder failures = new StringBuilder();
         for (int background : BACKGROUNDS) {
             for (int color : COLORS) {
-                for (boolean overlap : new boolean[] { false, true }) {
+                for (int copies = 1; copies <= 3; copies++) {
+                    boolean overlap = copies > 1;
                     BufferedImage reference = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
                     Graphics2D g = reference.createGraphics();
                     try {
-                        paint(g, background, color, overlap);
+                        paint(g, background, color, copies);
                     } finally {
                         g.dispose();
                     }
                     VolatileImage image = gc.createCompatibleVolatileImage(W, H, Transparency.OPAQUE);
                     g = image.createGraphics();
                     try {
-                        paint(g, background, color, overlap);
+                        paint(g, background, color, copies);
                     } finally {
                         g.dispose();
                     }
@@ -101,7 +102,8 @@ public class LcdTextBackgroundsTest {
                             }
                         }
                     }
-                    String what = String.format("%06x on %06x%s", color, background, overlap ? " with overlap" : "");
+                    String what = String.format("%06x on %06x%s", color, background,
+                            overlap ? " with " + (copies - 1) + " overlapping" : "");
                     System.out.println(what + ": max " + max + " levels, " + off + " pixels beyond " + tolerance);
                     if (off > 0) {
                         failures.append(what).append(" (max ").append(max).append(") ");
@@ -116,7 +118,7 @@ public class LcdTextBackgroundsTest {
         System.out.println("PASSED");
     }
 
-    private static void paint(Graphics2D g, int background, int color, boolean overlap) {
+    private static void paint(Graphics2D g, int background, int color, int copies) {
         g.setColor(new Color(background));
         g.fillRect(0, 0, W, H);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
@@ -126,10 +128,12 @@ public class LcdTextBackgroundsTest {
         g.drawString("Hamburgefonstiv ffi fl 0123 Wq", 4, 15);
         g.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         g.drawString("if (x <= y) { return ffi; }", 4, 32);
-        if (overlap) {
-            // a second glyph list of the same colour, one pixel over the first
-            g.setFont(font);
-            g.drawString("Hamburgefonstiv ffi fl 0123 Wq", 5, 15);
+        // further glyph lists of the same colour, each one pixel over the
+        // previous: glyphs that overlap pending ones go to later layers of the
+        // batch, and a third copy overlaps both
+        g.setFont(font);
+        for (int copy = 1; copy < copies; copy++) {
+            g.drawString("Hamburgefonstiv ffi fl 0123 Wq", 4 + copy, 15);
         }
     }
 

@@ -51,6 +51,11 @@ struct SKGlyphCache {
     sk_sp<SkImage> atlasImage;
 
     SKQuadBatch batch;
+    // The glyph list being drawn: a flush inside the list (an eviction, an
+    // uncached glyph) closes the batch, SKGlyphCache_Draw reopens it.
+    SkCanvas *canvas = nullptr;
+    SkPaint paint;
+    const SKQuadBatchTwoPass *passes = nullptr;
     std::vector<unsigned char> lcdRow;   // RGB -> RGBA conversion buffer
 };
 
@@ -110,6 +115,9 @@ bool SKGlyphCache_Fits(const SKGlyphCache *gc, const GlyphInfo *glyph) {
 }
 
 void SKGlyphCache_Begin(SKGlyphCache *gc, SkCanvas *canvas, const SkPaint &paint, const SKQuadBatchTwoPass *passes) {
+    gc->canvas = canvas;
+    gc->paint = paint;
+    gc->passes = passes;
     gc->batch.begin(canvas, paint, gc->atlasImage, passes);
 }
 
@@ -155,6 +163,9 @@ bool SKGlyphCache_Draw(SKGlyphCache *gc, GlyphInfo *glyph, jint subimage, jboole
         upload(gc, glyph, cell, subimage, rgbOrder);
     }
     cell->timesRendered++;
+    if (!gc->batch.active()) {
+        gc->batch.begin(gc->canvas, gc->paint, gc->atlasImage, gc->passes);
+    }
     gc->batch.addSprite(x, y, glyph->width, glyph->height, cell->x, cell->y);
     return true;
 }

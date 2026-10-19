@@ -49,7 +49,9 @@ bool SKGlyphCache_Fits(const SKGlyphCache *gc, const GlyphInfo *glyph);
 
 // A glyph list starts: the canvas and paint its glyphs are drawn with. Sprites
 // of consecutive glyph lists with the same canvas and paint accumulate in one
-// batch; a different paint draws the previous batch first.
+// batch; a different paint draws the previous batch first. A flush inside the
+// list (an eviction, an uncached glyph) closes the batch; the next cached
+// glyph of the list reopens it.
 void SKGlyphCache_Begin(SKGlyphCache *gc, SkCanvas *canvas, const SkPaint &paint,
                         const struct SKQuadBatchTwoPass *passes = nullptr);
 

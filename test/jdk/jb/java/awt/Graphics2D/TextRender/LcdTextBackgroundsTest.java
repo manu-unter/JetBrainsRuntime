@@ -27,19 +27,25 @@
  * @summary LCD text on a GPU pipeline against the software loops, on
  *          light, dark and mid-tone backgrounds in several text colours,
  *          with a second and a third string drawn over the first so that
- *          glyphs of two and three lists overlap inside one batch. The blender mode reads the
- *          destination and reproduces the loops' per-channel gamma blend
+ *          glyphs of two and three lists overlap inside one batch. The
+ *          blender mode reads the destination and reproduces the loops'
+ *          per-channel gamma blend
  *          closely; the two-pass mode folds the gamma correction into the
  *          coverage and is allowed a few levels at glyph edges. Overlapping
  *          glyphs must not change the result beyond that: each glyph has to
- *          be composited on top of the previous one, not added to it.
+ *          be composited on top of the previous one, not added to it. Every
+ *          sheet is drawn at the default LCD contrast and at 250, where the
+ *          GPU pipelines' gamma blend, Metal's included, sits up to 52
+ *          levels off the loops' table-driven one; the second tolerance on
+ *          the run line is for that sheet.
  *          Metal's blend is up to 43 levels off the loops in single edge
  *          pixels and runs with a wider tolerance.
  * @requires (os.family == "mac" | os.family == "windows")
  * @modules java.desktop/sun.java2d
- * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=blend -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest skia 16
- * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=twopass -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest skia 32
- * @run main/othervm -Dsun.java2d.metal=true -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest metal 48
+ * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=blend -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest skia 16 64
+ * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=twopass -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest skia 32 64
+ * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=accumulate -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest skia 32 64
+ * @run main/othervm -Dsun.java2d.metal=true -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest metal 48 64
  */
 
 import java.awt.Color;
@@ -62,13 +68,16 @@ public class LcdTextBackgroundsTest {
 
     public static void main(String[] args) throws Exception {
         String pipeline = args[0];
-        int tolerance = Integer.parseInt(args[1]);
+        int defaultTolerance = Integer.parseInt(args[1]);
+        int highContrastTolerance = Integer.parseInt(args[2]);
         GraphicsConfiguration gc = GraphicsEnvironment.getLocalGraphicsEnvironment()
                 .getDefaultScreenDevice().getDefaultConfiguration();
         if (!pipelineActive(pipeline, gc.createCompatibleVolatileImage(W, H, Transparency.OPAQUE))) {
             return;
         }
         StringBuilder failures = new StringBuilder();
+        for (int contrast : new int[] { 0, 250 }) {
+        int tolerance = contrast > 0 ? highContrastTolerance : defaultTolerance;
         for (int background : BACKGROUNDS) {
             for (int color : COLORS) {
                 for (int copies = 1; copies <= 3; copies++) {
@@ -76,14 +85,14 @@ public class LcdTextBackgroundsTest {
                     BufferedImage reference = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
                     Graphics2D g = reference.createGraphics();
                     try {
-                        paint(g, background, color, copies);
+                        paint(g, background, color, copies, contrast);
                     } finally {
                         g.dispose();
                     }
                     VolatileImage image = gc.createCompatibleVolatileImage(W, H, Transparency.OPAQUE);
                     g = image.createGraphics();
                     try {
-                        paint(g, background, color, copies);
+                        paint(g, background, color, copies, contrast);
                     } finally {
                         g.dispose();
                     }
@@ -103,7 +112,8 @@ public class LcdTextBackgroundsTest {
                         }
                     }
                     String what = String.format("%06x on %06x%s", color, background,
-                            overlap ? " with " + (copies - 1) + " overlapping" : "");
+                            overlap ? " with " + (copies - 1) + " overlapping" : "")
+                            + (contrast > 0 ? " contrast " + contrast : "");
                     System.out.println(what + ": max " + max + " levels, " + off + " pixels beyond " + tolerance);
                     if (off > 0) {
                         failures.append(what).append(" (max ").append(max).append(") ");
@@ -111,14 +121,18 @@ public class LcdTextBackgroundsTest {
                 }
             }
         }
+        }
         if (failures.length() > 0) {
-            throw new RuntimeException("LCD text differs from the software loops by more than "
-                    + tolerance + " levels: " + failures);
+            throw new RuntimeException("LCD text differs from the software loops beyond the tolerances "
+                    + defaultTolerance + " and " + highContrastTolerance + " levels: " + failures);
         }
         System.out.println("PASSED");
     }
 
-    private static void paint(Graphics2D g, int background, int color, int copies) {
+    private static void paint(Graphics2D g, int background, int color, int copies, int contrast) {
+        if (contrast > 0) {
+            g.setRenderingHint(RenderingHints.KEY_TEXT_LCD_CONTRAST, contrast);
+        }
         g.setColor(new Color(background));
         g.fillRect(0, 0, W, H);
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);

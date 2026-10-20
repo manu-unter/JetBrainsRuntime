@@ -35,6 +35,7 @@
 #include "include/core/SkShader.h"
 #include "include/core/SkVertices.h"
 #include "jni.h"
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <vector>
@@ -86,12 +87,14 @@ public:
         // framebuffer fetch (Dawn on D3D11) read it from a copy taken before the
         // draw, so overlapping quads of one draw would all see the state before
         // any of them (a crossing of two XOR strokes stays XORed once, the second
-        // of two overlapping LCD glyphs loses the first's coverage): a quad that
-        // overlaps a pending one starts a new draw (push()). Two passes over one
-        // mesh are not sequential either (both quads' second passes add to the
-        // product of their first), so they split on overlap too.
-        splitOnOverlap = !p.asBlendMode().has_value() || passes != nullptr;
-        const bool mergeColors = atlas != nullptr && passes == nullptr && p.getShader() == nullptr
+        // of two overlapping LCD glyphs loses the first's coverage). Two passes
+        // over one mesh are not sequential either (both quads' second passes add
+        // to the product of their first). Such quads go to mesh layers drawn
+        // after the quads they overlap (push()).
+        splitOnOverlap = (!p.asBlendMode().has_value() && splitBlenders) || passes != nullptr;
+        // Colours are not merged with an afterDraw hook either: it receives the
+        // batch's paint and reads the colour from it.
+        const bool mergeColors = atlas != nullptr && passes == nullptr && !afterDraw && p.getShader() == nullptr
                                  && p.asBlendMode().has_value() && p.getColorFilter() == nullptr
                                  && p.getMaskFilter() == nullptr;
         // begin() runs per primitive (thousands per frame): no paint copy on the
@@ -186,7 +189,15 @@ public:
     // Runs right before a mesh is drawn, whoever triggers the draw. The mask
     // cache uploads its staged atlas cells here: an upload is only ordered ahead
     // of the destination's pass if a draw sampling the atlas is recorded after it.
-    std::function<void()> beforeDraw;
+    std::function<void(const SkRect &bounds)> beforeDraw;
+
+    // Runs right after the meshes of a draw, with their bounds (the coverage
+    // accumulation composites them onto the destination here).
+    std::function<void(const SkRect &bounds, const SkPaint &paint)> afterDraw;
+
+    // Whether a runtime blender's quads split on overlap: not where the
+    // blender reads the live framebuffer (SKBackend_FramebufferFetch).
+    bool splitBlenders = true;
 
     // Draws what is queued and closes the batch.
     void flush() {
@@ -196,12 +207,14 @@ public:
     }
 
 private:
-    // The vertices of one draw. While splitOnOverlap, quads that overlap a
-    // pending quad go to the next layer instead of ending the batch: within a
-    // layer no two quads overlap, so one draw (or one pass pair) composes them
-    // correctly, and the layers are drawn in order. A line of text is one or
-    // two draws rather than one per glyph. The overlap extents are kept in a
-    // hashed grid of 64-pixel cells, so a test touches the few quads nearby.
+    // The vertices of one draw. While splitOnOverlap, a quad that overlaps a
+    // pending quad goes to the layer after the last one it overlaps instead of
+    // ending the batch: within a layer no two quads overlap, so one draw (or
+    // one pass pair) composes them correctly, and a quad is drawn after every
+    // quad it overlaps, since the layers are drawn in order. A line of text is
+    // one or two draws rather than one per glyph. The overlap extents are kept
+    // in a hashed grid of 64-pixel cells, so a test touches the few quads
+    // nearby.
     struct Mesh {
         static constexpr int kCellShift = 6;   // 64-pixel grid cells
         static constexpr int kBuckets = 64;
@@ -270,18 +283,20 @@ private:
                 drawPending();
             }
             if (!bounds.isEmpty()) {
+                // the layer after the last one holding a quad this one overlaps
+                size_t depth = 0;
                 if (base.overlaps(bounds)) {
-                    target = nullptr;
-                    for (Mesh &layer : layers) {
-                        if (!layer.overlaps(bounds)) {
-                            target = &layer;
-                            break;
+                    depth = 1;
+                    for (size_t i = 0; i < layerCount; i++) {
+                        if (layers[i].overlaps(bounds)) {
+                            depth = i + 2;
                         }
                     }
-                    if (target == nullptr) {
-                        layers.emplace_back();
-                        target = &layers.back();
-                    }
+                }
+                target = layer(depth);
+                if (target->positions.size() + 4 > 0xffff) {   // 16-bit indices
+                    drawPending();
+                    target = &base;
                 }
                 target->addBounds(bounds);
             }
@@ -324,18 +339,56 @@ private:
         }
     }
 
+    // Layer `depth` (0 is the base); the vectors of a used layer are kept.
+    Mesh *layer(size_t depth) {
+        if (depth == 0) {
+            return &base;
+        }
+        while (layerCount < depth) {
+            if (layerCount == layers.size()) {
+                layers.emplace_back();
+            }
+            layerCount++;
+        }
+        return &layers[depth - 1];
+    }
+
+    static void extend(SkRect &bounds, const Mesh &m) {
+        for (const SkPoint &pt : m.positions) {
+            bounds.fLeft = std::min(bounds.fLeft, pt.fX);
+            bounds.fTop = std::min(bounds.fTop, pt.fY);
+            bounds.fRight = std::max(bounds.fRight, pt.fX);
+            bounds.fBottom = std::max(bounds.fBottom, pt.fY);
+        }
+    }
+
     void drawPending() {
         if (canvas != nullptr && !base.indices.empty()) {
+            // the bounds matter to the composite after the draw only; the mask
+            // cache's beforeDraw ignores them
+            SkRect bounds = SkRect::MakeLTRB(SK_ScalarMax, SK_ScalarMax, -SK_ScalarMax, -SK_ScalarMax);
+            if (afterDraw) {
+                extend(bounds, base);
+                for (size_t i = 0; i < layerCount; i++) {
+                    extend(bounds, layers[i]);
+                }
+            }
             if (beforeDraw) {
-                beforeDraw();
+                beforeDraw(bounds);
             }
             draw(base, colorPerVertex);
-            for (const Mesh &layer : layers) {
-                draw(layer, false);
+            for (size_t i = 0; i < layerCount; i++) {
+                draw(layers[i], false);
+            }
+            if (afterDraw) {
+                afterDraw(bounds, paint);
             }
         }
         base.clear();
-        layers.clear();
+        for (size_t i = 0; i < layerCount; i++) {
+            layers[i].clear();
+        }
+        layerCount = 0;
         colors.clear();
     }
 
@@ -351,6 +404,7 @@ private:
     sk_sp<SkImage> atlasImage;
     Mesh base;                       // the quads of the batch, or its first layer
     std::vector<Mesh> layers;        // quads overlapping an earlier layer's, drawn after it
+    size_t layerCount = 0;           // layers in use; the rest keep their vectors for reuse
     std::vector<SkColor> colors;     // per vertex of `base` when colorPerVertex
 };
 

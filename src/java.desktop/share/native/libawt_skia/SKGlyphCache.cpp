@@ -46,7 +46,6 @@ static const jint CELL_SIZE  = 32;
 static const jint CELLS_PER_ROW = CACHE_SIZE / CELL_SIZE;
 // Coverage up to this is the LCD filter's spill into the padding, not ink: it
 // does not count for the overlap test of two glyphs.
-static const unsigned char INK_THRESHOLD = 8;
 
 struct SKGlyphCache {
     SKConfigContext *cc = nullptr;
@@ -63,9 +62,14 @@ struct SKGlyphCache {
     const SKQuadBatchTwoPass *passes = nullptr;
     std::vector<unsigned char> lcdRow;   // RGB -> RGBA conversion buffer
     // Per cell, the part of the glyph image above INK_THRESHOLD, relative to
-    // the glyph's origin: what SKQuadBatch tests for overlap.
+    // the glyph's origin: what SKQuadBatch tests for overlap. The excluded
+    // pixels are the LCD filter's tails; mesh-sharing glyphs that meet there
+    // err by their product, measured as no difference against a threshold of
+    // zero at the highest LCD contrast (LcdTextBackgroundsTest).
     std::vector<SkIRect> ink;
 };
+
+static const unsigned char INK_THRESHOLD = 8;
 
 static inline size_t cellIndex(const CacheCellInfo *cell) {
     return (size_t) (cell->y / CELL_SIZE) * CELLS_PER_ROW + (size_t) (cell->x / CELL_SIZE);
@@ -124,6 +128,7 @@ SKGlyphCache *SKGlyphCache_Create(SKConfigContext *cc, bool lcd) {
     gc->cc = cc;
     gc->lcd = lcd;
     gc->ink.resize((size_t) CELLS_PER_ROW * CELLS_PER_ROW, SkIRect::MakeEmpty());
+    gc->batch.splitBlenders = !SKBackend_FramebufferFetch();
     gc->info = AccelGlyphCache_Init(CACHE_SIZE, CACHE_SIZE, CELL_SIZE, CELL_SIZE, flushForEviction);
     if (gc->info == nullptr) {
         delete gc;
@@ -202,7 +207,7 @@ bool SKGlyphCache_Draw(SKGlyphCache *gc, GlyphInfo *glyph, jint subimage, jboole
     if (!gc->batch.active()) {
         gc->batch.begin(gc->canvas, gc->paint, gc->atlasImage, gc->passes);
     }
-    gc->batch.addSprite(x, y, glyph->width, glyph->height, cell->x, cell->y);
+    gc->batch.addSprite(x, y, glyph->width, glyph->height, cell->x, cell->y, &gc->ink[cellIndex(cell)]);
     return true;
 }
 
@@ -210,4 +215,8 @@ void SKGlyphCache_Flush(SKGlyphCache *gc) {
     if (gc != nullptr) {
         gc->batch.flush();
     }
+}
+
+SKQuadBatch &SKGlyphCache_Batch(SKGlyphCache *gc) {
+    return gc->batch;
 }

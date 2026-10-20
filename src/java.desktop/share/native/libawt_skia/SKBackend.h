@@ -46,6 +46,7 @@
 #include "include/gpu/graphite/Recorder.h"
 
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 
 struct SKGlyphCache;
@@ -59,6 +60,8 @@ struct SKConfigContext {
     SKGlyphCache *glyphCacheLCD = nullptr;
     SKMaskCache *maskCache = nullptr;        // created on first use
     std::unordered_set<struct SKSurfaceState *> surfaces;   // wrapped with this recorder
+    std::unordered_map<uint64_t, sk_sp<SkImage>> lcdTables;   // coverage correction per text colour and contrast
+    sk_sp<SkSurface> lcdCoverage;            // scratch for sun.java2d.skia.lcd=accumulate, destination-sized
 };
 
 struct SKSurfaceState {
@@ -84,9 +87,15 @@ SKPlatformSurface *SKSurfaceData_PlatformOf(SurfaceDataOps *ops);
 // Contexts
 // Architecture-dependent configuration (SKEnvironment decides the values per
 // GPU API and system property before the first context is created).
-void SKBackend_Configure(jint msaaSamples, bool edgeAAQuads, bool lcdTwoPass);
+// How LCD text is composited (SKEnvironment.LcdMode, same order).
+enum class SKLcdMode { Blend = 0, TwoPass = 1, Accumulate = 2 };
+
+void SKBackend_Configure(jint msaaSamples, bool edgeAAQuads, SKLcdMode lcdMode, bool framebufferFetch);
 bool SKBackend_Multisampled();
 bool SKBackend_EdgeAAQuads();
+// Whether a blender reads the live framebuffer (in order, per fragment) rather
+// than a copy taken before the draw: overlapping quads may then share a draw.
+bool SKBackend_FramebufferFetch();
 SKConfigContext *SKBackend_ContextFor(SKPlatformConfig *config);
 void SKBackend_DisposeContext(SKPlatformConfig *config);
 

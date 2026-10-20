@@ -36,6 +36,7 @@
  * @modules java.desktop/sun.java2d
  * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.uiScale=1 GlyphAtlasEvictionTest skia gray 32
  * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.uiScale=1 GlyphAtlasEvictionTest skia lcd 32
+ * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=accumulate -Dsun.java2d.uiScale=1 GlyphAtlasEvictionTest skia lcd 32
  * @run main/othervm -Dsun.java2d.metal=true -Dsun.java2d.uiScale=1 GlyphAtlasEvictionTest metal gray 48
  */
 

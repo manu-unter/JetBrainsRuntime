@@ -2008,6 +2008,7 @@ void SKBackend_FlushRecording(SKConfigContext *cc) {
     SKGlyphCache_Flush(cc->glyphCacheLCD);
     SKMaskCache_Flush(cc->maskCache);
     gRects.flush();
+    cc->recordingGeneration++;
     std::unique_ptr<Recording> recording = cc->recorder->snap();
     if (recording) {
         InsertRecordingInfo info;

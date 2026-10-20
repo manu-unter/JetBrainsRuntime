@@ -34,9 +34,9 @@ extern "C" {
 
 JNIEXPORT void JNICALL
 Java_sun_java2d_skia_SKEnvironment_configureNative(JNIEnv *env, jclass clazz, jint msaaSamples, jboolean edgeAAQuads,
-                                                   jboolean lcdTwoPass)
+                                                   jint lcdMode, jboolean framebufferFetch)
 {
-    SKBackend_Configure(msaaSamples, edgeAAQuads == JNI_TRUE, lcdTwoPass == JNI_TRUE);
+    SKBackend_Configure(msaaSamples, edgeAAQuads == JNI_TRUE, (SKLcdMode) lcdMode, framebufferFetch == JNI_TRUE);
 }
 
 } // extern "C"

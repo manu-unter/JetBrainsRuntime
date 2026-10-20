@@ -124,6 +124,7 @@ SKGlyphCache *SKGlyphCache_Create(SKConfigContext *cc, bool lcd) {
     gc->cc = cc;
     gc->lcd = lcd;
     gc->ink.resize((size_t) CELLS_PER_ROW * CELLS_PER_ROW, SkIRect::MakeEmpty());
+    gc->batch.splitBlenders = !SKBackend_FramebufferFetch();
     gc->info = AccelGlyphCache_Init(CACHE_SIZE, CACHE_SIZE, CELL_SIZE, CELL_SIZE, flushForEviction);
     if (gc->info == nullptr) {
         delete gc;
@@ -210,4 +211,8 @@ void SKGlyphCache_Flush(SKGlyphCache *gc) {
     if (gc != nullptr) {
         gc->batch.flush();
     }
+}
+
+SKQuadBatch &SKGlyphCache_Batch(SKGlyphCache *gc) {
+    return gc->batch;
 }

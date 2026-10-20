@@ -77,12 +77,19 @@ public final class SKEnvironment {
      *     destination read (multiply by the inverse coverage, add the colour
      *     times the coverage, as DirectWrite blends ClearType), with the
      *     gamma correction folded into the coverage (exact on white and black
-     *     backgrounds, a few levels off on others), and cheap everywhere.</li>
+     *     backgrounds, a few levels off on others), and cheap everywhere.
+     *     {@code accumulate}: the same blend, but the glyphs of a batch are
+     *     first drawn into a coverage texture (where overlapping glyphs
+     *     combine in order, so the batch needs no splitting) and the two draws
+     *     composite that texture over the batch's bounds.</li>
      * </ul>
      * {@code sun.java2d.skia.shapes} (see {@link #rasterizesShapes()}) is the
      * fourth knob; it is decided on the Java side.
      */
-    private record Configuration(int msaaSamples, boolean edgeAAQuads, boolean lcdTwoPass) {
+    /** How LCD text is composited; the ordinals are what the native side receives. */
+    enum LcdMode { BLEND, TWOPASS, ACCUMULATE }
+
+    private record Configuration(int msaaSamples, boolean edgeAAQuads, LcdMode lcdMode, boolean framebufferFetch) {
         static Configuration defaultsFor(String gpuApi, boolean framebufferFetch) {
             // Measured on Metal (Apple M1 Max) and Dawn/D3D11: the path atlas beats
             // 4x MSAA on fidelity and MSAA only wins on general paths; meshes and
@@ -91,7 +98,7 @@ public final class SKEnvironment {
             // framebuffer fetch costs a render pass and a copy per draw (Dawn on
             // Direct3D, Metal on Intel and AMD GPUs), which LCD text cannot
             // afford once overlapping glyphs are drawn separately.
-            return new Configuration(1, false, !framebufferFetch);
+            return new Configuration(1, false, framebufferFetch ? LcdMode.BLEND : LcdMode.TWOPASS, framebufferFetch);
         }
 
         Configuration withProperties() {
@@ -99,8 +106,15 @@ public final class SKEnvironment {
             String blits = System.getProperty("sun.java2d.skia.blitQuads");
             boolean edgeAA = blits == null ? edgeAAQuads : "edgeAA".equalsIgnoreCase(blits);
             String lcd = System.getProperty("sun.java2d.skia.lcd");
-            boolean twoPass = lcd == null ? lcdTwoPass : "twopass".equalsIgnoreCase(lcd);
-            return new Configuration(samples, edgeAA, twoPass);
+            LcdMode mode = lcdMode;
+            if (lcd != null) {
+                try {
+                    mode = LcdMode.valueOf(lcd.toUpperCase(java.util.Locale.ROOT));
+                } catch (IllegalArgumentException e) {
+                    mode = LcdMode.BLEND;
+                }
+            }
+            return new Configuration(samples, edgeAA, mode, framebufferFetch);
         }
     }
 
@@ -150,7 +164,8 @@ public final class SKEnvironment {
             description = initNative();
             if (description != null) {
                 configuration = Configuration.defaultsFor(gpuApiNative(), framebufferFetchNative()).withProperties();
-                configureNative(configuration.msaaSamples(), configuration.edgeAAQuads(), configuration.lcdTwoPass());
+                configureNative(configuration.msaaSamples(), configuration.edgeAAQuads(),
+                                configuration.lcdMode().ordinal(), configuration.framebufferFetch());
             }
         } catch (UnsatisfiedLinkError e) {
             if (VERBOSE) {
@@ -163,7 +178,7 @@ public final class SKEnvironment {
             String msg = "Skia rendering enabled: " + (description != null
                     ? "YES (" + description + ", shapes: " + SHAPES + ", msaa: " + configuration.msaaSamples()
                       + ", blitQuads: " + (configuration.edgeAAQuads() ? "edgeAA" : "mesh")
-                      + ", lcd: " + (configuration.lcdTwoPass() ? "twopass" : "blend") + ")"
+                      + ", lcd: " + configuration.lcdMode().name().toLowerCase(java.util.Locale.ROOT) + ")"
                     : "NO");
             if (VERBOSE) {
                 System.err.println(msg);
@@ -182,5 +197,5 @@ public final class SKEnvironment {
     private static native boolean framebufferFetchNative();
 
     /** Hands the architecture-dependent configuration to the native backend before any context exists. */
-    private static native void configureNative(int msaaSamples, boolean edgeAAQuads, boolean lcdTwoPass);
+    private static native void configureNative(int msaaSamples, boolean edgeAAQuads, int lcdMode, boolean framebufferFetch);
 }

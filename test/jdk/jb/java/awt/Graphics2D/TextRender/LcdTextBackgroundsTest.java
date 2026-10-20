@@ -39,6 +39,7 @@
  * @modules java.desktop/sun.java2d
  * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=blend -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest skia 16
  * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=twopass -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest skia 32
+ * @run main/othervm -Dsun.java2d.skia=true -Dsun.java2d.skia.lcd=accumulate -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest skia 32
  * @run main/othervm -Dsun.java2d.metal=true -Dsun.java2d.uiScale=1 LcdTextBackgroundsTest metal 48
  */
 

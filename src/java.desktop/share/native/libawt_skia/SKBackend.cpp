@@ -1567,16 +1567,20 @@ void SKBackend_DrawGlyphList(jint numGlyphs, jboolean usePositions, jboolean sub
         if (ginfo == nullptr || ginfo == (const GlyphInfo *) -1) {
             break;
         }
-        float gx, gy;
+        // the glyph's origin (px, py in DrawGlyphList.c), then its image's top left:
+        // kept apart because the LCD sub-pixel rule below adds its offset in
+        // between, and float rounding has to match the loops to the bit
+        float originX, originY;
         if (usePositions) {
-            gx = glyphListOrigX + positions[2 * i] + ginfo->topLeftX;
-            gy = glyphListOrigY + positions[2 * i + 1] + ginfo->topLeftY;
+            originX = glyphListOrigX + positions[2 * i];
+            originY = glyphListOrigY + positions[2 * i + 1];
         } else {
-            gx = glyphListOrigX + ginfo->topLeftX;
-            gy = glyphListOrigY + ginfo->topLeftY;
+            originX = glyphListOrigX;
+            originY = glyphListOrigY;
             glyphListOrigX += ginfo->advanceX;
             glyphListOrigY += ginfo->advanceY;
         }
+        float gx = originX + ginfo->topLeftX, gy = originY + ginfo->topLeftY;
         int rx = ginfo->subpixelResolutionX, ry = ginfo->subpixelResolutionY;
         gx = adjustSubpixel(gx, rx);
         gy = adjustSubpixel(gy, ry);
@@ -1646,7 +1650,16 @@ void SKBackend_DrawGlyphList(jint numGlyphs, jboolean usePositions, jboolean sub
             }
             jint rowBytesOffset = 0;
             if (subPixPos) {
-                jint frac = (jint) ((gx - fx) * 3);
+                // As the software loops (DrawGlyphList.c, LCD with fractional
+                // metrics): the position is moved by a sixth of a pixel minus a
+                // half before it is floored and split into thirds, so the glyph
+                // lands a third of a pixel up and to the left of the plain
+                // floor, and the sub-pixel third shifts the image by whole bytes.
+                const float px = (originX + (0.1666667f - 0.5f)) + ginfo->topLeftX;
+                const float py = (originY + (0.1666667f - 0.5f)) + ginfo->topLeftY;
+                fx = floorf(px);
+                fy = floorf(py);
+                jint frac = (jint) ((px - fx) * 3);
                 if (frac != 0) {
                     rowBytesOffset = 3 - frac;
                     fx += 1;

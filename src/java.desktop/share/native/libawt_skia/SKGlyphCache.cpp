@@ -30,6 +30,7 @@
 #include "AccelGlyphCache.h"
 #include "Trace.h"
 
+#include "include/core/SkBitmap.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkPixmap.h"
 #include "include/core/SkSamplingOptions.h"
@@ -37,6 +38,7 @@
 #include "include/gpu/graphite/Surface.h"
 
 #include <algorithm>
+#include <cstring>
 #include <vector>
 
 // Same geometry as MTLTextRenderer's caches, twice the side: an IDE frame holds
@@ -60,14 +62,29 @@ struct SKGlyphCache {
     SkCanvas *canvas = nullptr;
     SkPaint paint;
     const SKQuadBatchTwoPass *passes = nullptr;
-    std::vector<unsigned char> lcdRow;   // RGB -> RGBA conversion buffer
     // Per cell, the part of the glyph image above INK_THRESHOLD, relative to
     // the glyph's origin: what SKQuadBatch tests for overlap. The excluded
     // pixels are the LCD filter's tails; mesh-sharing glyphs that meet there
     // err by their product, measured as no difference against a threshold of
     // zero at the highest LCD contrast (LcdTextBackgroundsTest).
     std::vector<SkIRect> ink;
+    // Per cell, the recording generation (SKConfigContext::recordingGeneration)
+    // of the last sprite that sampled it. A cell last used in an earlier,
+    // already inserted recording can be overwritten without a flush: Graphite
+    // orders the recordings, and an upload in the next one follows every draw
+    // of the previous. Only a cell used in the current recording needs the
+    // recording ended first (the upload would precede the draws in it).
+    std::vector<uint32_t> lastUsed;
+    // The atlas' pixels on the CPU: glyphs are written here, and the rows
+    // touched since the last draw go up in one writePixels each when the
+    // batch draws (SKQuadBatch::beforeUpload), instead of one upload per glyph.
+    SkBitmap shadow;
+    std::vector<SkIRect> dirtyRows;   // per cell row, the pixels to upload
 };
+
+static const jint TIMES_RENDERED_THRESHOLD = 5;   // as AccelGlyphCache_AddGlyph's
+
+static void uploadDirtyRows(SKGlyphCache *gc);
 
 static const unsigned char INK_THRESHOLD = 8;
 
@@ -128,6 +145,7 @@ SKGlyphCache *SKGlyphCache_Create(SKConfigContext *cc, bool lcd) {
     gc->cc = cc;
     gc->lcd = lcd;
     gc->ink.resize((size_t) CELLS_PER_ROW * CELLS_PER_ROW, SkIRect::MakeEmpty());
+    gc->lastUsed.resize((size_t) CELLS_PER_ROW * CELLS_PER_ROW, 0);
     gc->batch.splitBlenders = !SKBackend_FramebufferFetch();
     gc->info = AccelGlyphCache_Init(CACHE_SIZE, CACHE_SIZE, CELL_SIZE, CELL_SIZE, flushForEviction);
     if (gc->info == nullptr) {
@@ -136,6 +154,14 @@ SKGlyphCache *SKGlyphCache_Create(SKConfigContext *cc, bool lcd) {
     }
     gc->atlas = std::move(atlas);
     gc->atlasImage = SkSurfaces::AsImage(gc->atlas);
+    if (!gc->shadow.tryAllocPixels(info)) {
+        J2dRlsTraceLn(J2D_TRACE_ERROR, "SKGlyphCache_Create: cannot allocate the %s atlas shadow", lcd ? "RGBA" : "A8");
+        SKGlyphCache_Free(gc);
+        return nullptr;
+    }
+    gc->shadow.eraseColor(SK_ColorTRANSPARENT);
+    gc->dirtyRows.resize((size_t) CELLS_PER_ROW, SkIRect::MakeEmpty());
+    gc->batch.beforeUpload = [gc]() { uploadDirtyRows(gc); };
     return gc;
 }
 
@@ -160,21 +186,43 @@ void SKGlyphCache_Begin(SKGlyphCache *gc, SkCanvas *canvas, const SkPaint &paint
     gc->batch.begin(canvas, paint, gc->atlasImage, passes);
 }
 
+// Uploads the rows of the shadow that changed since the last upload.
+static void uploadDirtyRows(SKGlyphCache *gc) {
+    SkPixmap all;
+    if (!gc->shadow.peekPixels(&all)) {
+        return;
+    }
+    for (SkIRect &dirty : gc->dirtyRows) {
+        if (!dirty.isEmpty()) {
+            SkPixmap sub;
+            if (all.extractSubset(&sub, dirty)) {
+                gc->atlas->writePixels(sub, dirty.fLeft, dirty.fTop);
+            }
+            dirty.setEmpty();
+        }
+    }
+}
+
+static void markDirty(SKGlyphCache *gc, const CacheCellInfo *cell, int w, int h) {
+    gc->dirtyRows[(size_t) (cell->y / CELL_SIZE)].join(SkIRect::MakeXYWH(cell->x, cell->y, w, h));
+}
+
 static void upload(SKGlyphCache *gc, const GlyphInfo *glyph, const CacheCellInfo *cell, jint subimage, jboolean rgbOrder) {
     const int w = glyph->width, h = glyph->height;
     if (!gc->lcd) {
         const unsigned char *data = glyph->image + (size_t) glyph->rowBytes * h * subimage;
-        SkPixmap pm(SkImageInfo::MakeA8(w, h), data, glyph->rowBytes);
-        gc->atlas->writePixels(pm, cell->x, cell->y);
+        for (int row = 0; row < h; row++) {
+            memcpy(gc->shadow.getAddr8(cell->x, cell->y + row), data + (size_t) row * glyph->rowBytes, (size_t) w);
+        }
         gc->ink[cellIndex(cell)] = inkBounds(data, w, h, glyph->rowBytes, 1);
+        markDirty(gc, cell, w, h);
         return;
     }
     // LCD glyph: 3 bytes of coverage per pixel, in the order the strike asked for.
     gc->ink[cellIndex(cell)] = inkBounds(glyph->image, w, h, glyph->rowBytes, 3);
-    gc->lcdRow.resize((size_t) w * h * 4);
     for (int row = 0; row < h; row++) {
         const unsigned char *src = glyph->image + (size_t) row * glyph->rowBytes;
-        unsigned char *dst = gc->lcdRow.data() + (size_t) row * w * 4;
+        unsigned char *dst = (unsigned char *) gc->shadow.getAddr32(cell->x, cell->y + row);
         for (int col = 0; col < w; col++, src += 3, dst += 4) {
             dst[0] = rgbOrder ? src[0] : src[2];
             dst[1] = src[1];
@@ -182,8 +230,45 @@ static void upload(SKGlyphCache *gc, const GlyphInfo *glyph, const CacheCellInfo
             dst[3] = 0xff;
         }
     }
-    SkPixmap pm(SkImageInfo::Make(w, h, kRGBA_8888_SkColorType, kOpaque_SkAlphaType), gc->lcdRow.data(), (size_t) w * 4);
-    gc->atlas->writePixels(pm, cell->x, cell->y);
+    markDirty(gc, cell, w, h);
+}
+
+// A cell for `glyph` in a full cache, with AccelGlyphCache_AddGlyph's policy
+// (walk from the head, keep cells rendered at least TIMES_RENDERED_THRESHOLD
+// times, rotate the walked cells to the tail) and one more condition: the cell
+// was last used in an earlier recording, so no flush is needed. If every cell
+// was used in the current recording, the recording is ended once and the walk
+// starts over; the eviction is then free for the rest of the recording.
+static CacheCellInfo *reusableCell(SKGlyphCache *gc, GlyphInfo *glyph) {
+    GlyphCacheInfo *info = gc->info;
+    const size_t cells = gc->lastUsed.size();
+    for (int pass = 0; pass < 2; pass++) {
+        const uint32_t current = gc->cc->recordingGeneration;
+        for (size_t i = 0; i < cells; i++) {
+            CacheCellInfo *cell = info->head;
+            const bool idle = gc->lastUsed[cellIndex(cell)] < current;
+            const bool reusable = cell->glyphInfo == NULL || (idle && cell->timesRendered < TIMES_RENDERED_THRESHOLD);
+            info->head = cell->next;
+            info->tail->next = cell;
+            info->tail = cell;
+            cell->next = NULL;
+            cell->timesRendered = 0;
+            if (reusable) {
+                if (cell->glyphInfo != NULL) {
+                    AccelGlyphCache_RemoveCellInfo(cell->glyphInfo, cell);
+                }
+                cell->glyphInfo = glyph;
+                cell->tx2 = cell->tx1 + ((jfloat) glyph->width / info->width);
+                cell->ty2 = cell->ty1 + ((jfloat) glyph->height / info->height);
+                AccelGlyphCache_AddCellInfo(glyph, cell);
+                return cell;
+            }
+        }
+        // every cell was used in this recording: end it, then the walk finds one
+        gc->batch.flush();
+        SKBackend_FlushRecording(gc->cc);
+    }
+    return nullptr;
 }
 
 bool SKGlyphCache_Draw(SKGlyphCache *gc, GlyphInfo *glyph, jint subimage, jboolean rgbOrder, float x, float y) {
@@ -194,9 +279,13 @@ bool SKGlyphCache_Draw(SKGlyphCache *gc, GlyphInfo *glyph, jint subimage, jboole
         cell = cell->nextGCI;
     }
     if (cell == nullptr) {
-        gAdding = gc;
-        cell = AccelGlyphCache_AddGlyph(gc->info, glyph);
-        gAdding = nullptr;
+        if (gc->info->isFull) {
+            cell = reusableCell(gc, glyph);
+        } else {
+            gAdding = gc;
+            cell = AccelGlyphCache_AddGlyph(gc->info, glyph);
+            gAdding = nullptr;
+        }
         if (cell == nullptr) {
             return false;
         }
@@ -204,6 +293,7 @@ bool SKGlyphCache_Draw(SKGlyphCache *gc, GlyphInfo *glyph, jint subimage, jboole
         upload(gc, glyph, cell, subimage, rgbOrder);
     }
     cell->timesRendered++;
+    gc->lastUsed[cellIndex(cell)] = gc->cc->recordingGeneration;
     if (!gc->batch.active()) {
         gc->batch.begin(gc->canvas, gc->paint, gc->atlasImage, gc->passes);
     }

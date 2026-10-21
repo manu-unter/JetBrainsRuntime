@@ -245,7 +245,11 @@ final class SKShapePipe implements ShapeDrawPipe {
         } else if (s instanceof RoundRectangle2D rr) {
             geo.kind = KIND_ROUND_RECT;
             x = rr.getX(); y = rr.getY(); w = rr.getWidth(); h = rr.getHeight();
-            aw = rr.getArcWidth(); ah = rr.getArcHeight();
+            // Java clamps each arc to its own side (RoundRectIterator): arcs wider
+            // than the shape make a pill with semicircular ends. Skia's rounded
+            // rect scales both radii by one factor instead, which flattens the
+            // ends of a pill (60 levels and more at the arcs).
+            aw = Math.min(w, Math.abs(rr.getArcWidth())); ah = Math.min(h, Math.abs(rr.getArcHeight()));
         } else {
             return false;
         }

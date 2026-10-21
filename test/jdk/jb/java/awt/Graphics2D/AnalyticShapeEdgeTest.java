@@ -20,8 +20,11 @@
 /*
  * @test
  * @key headful
- * @summary Antialiased fills of round rectangles and ellipses on a GPU
- *          pipeline have the edges of the software loops. Marlin does not
+ * @summary Antialiased fills of round rectangles, pills and ellipses on a GPU
+ *          pipeline have the edges and the corner geometry of the software
+ *          loops. A round rectangle whose arcs are wider than its sides is a
+ *          pill: Java clamps each arc to its own side (RoundRectIterator),
+ *          where Skia's rounded rect scales both radii by one factor. Marlin does not
  *          normalize the outline of an antialiased fill (only strokes are
  *          snapped), so an edge on a pixel boundary is crisp and an edge at
  *          a fraction covers the outer pixel by that fraction. A pipeline
@@ -76,7 +79,7 @@ public class AnalyticShapeEdgeTest {
         }
         StringBuilder failures = new StringBuilder();
         for (int scale : new int[] { 1, 2 }) {
-            for (String shape : new String[] { "rect", "roundrect", "ellipse" }) {
+            for (String shape : new String[] { "rect", "roundrect", "pill", "ellipse" }) {
                 for (double fraction : new double[] { 0, 0.5 }) {
                     if (shape.equals("rect") && fraction != 0) {
                         continue;   // a rect at a half pixel is the parallelogram pipe's business (4 corner pixels off by 15 levels today)
@@ -138,6 +141,8 @@ public class AnalyticShapeEdgeTest {
         Shape s = switch (shape) {
             case "rect" -> new Rectangle2D.Double(x, y, w, h);
             case "roundrect" -> new RoundRectangle2D.Double(x, y, w, h, 8, 8);
+            // arcs wider than the shape: Java clamps each arc to its own side (a pill), see RoundRectIterator
+            case "pill" -> new RoundRectangle2D.Double(x, y, w, h, 48, 48);
             default -> new Ellipse2D.Double(x, y, w, h);
         };
         g.setColor(new Color(0x233558));
@@ -148,6 +153,7 @@ public class AnalyticShapeEdgeTest {
             Shape outline = switch (shape) {
                 case "rect" -> new Rectangle2D.Double(x + 0.5, y + 0.5, w - 1, h - 1);
                 case "roundrect" -> new RoundRectangle2D.Double(x + 0.5, y + 0.5, w - 1, h - 1, 8, 8);
+                case "pill" -> new RoundRectangle2D.Double(x + 0.5, y + 0.5, w - 1, h - 1, 48, 48);
                 default -> new Ellipse2D.Double(x + 0.5, y + 0.5, w - 1, h - 1);
             };
             g.draw(outline);

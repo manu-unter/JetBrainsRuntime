@@ -157,7 +157,13 @@ final class SKShapePipe implements ShapeDrawPipe {
 
     private void render(SunGraphics2D sg2d, Shape s, BasicStroke bs) {
         AffineTransform at = sg2d.transform;
-        boolean normalize = sg2d.strokeHint != SunHints.INTVAL_STROKE_PURE;
+        // Java normalizes strokes only (AAShapePipe.renderPath: adjust = bs != null
+        // && !PURE): the outline of an antialiased fill is rasterized where it is,
+        // so an edge on a pixel boundary is crisp and a fractional edge covers
+        // the outer pixel by its fraction. Snapping fill edges to pixel centres
+        // spilled half a device pixel over the right and bottom of every
+        // rounded panel and tab (AnalyticShapeEdgeTest).
+        boolean normalize = bs != null && sg2d.strokeHint != SunHints.INTVAL_STROKE_PURE;
         boolean axisAligned = (at.getType() & AXIS_ALIGNED_MASK) == 0;
         Geometry geo = new Geometry();
         float[] stroke = null;
@@ -185,8 +191,8 @@ final class SKShapePipe implements ShapeDrawPipe {
         if (analyticStroke && analytic(s, at, axisAligned && normalize, axisAligned, bs != null, geo)) {
             // ready
         } else if (bs == null) {
-            // fill: the device-space path, normalized like Marlin's
-            path(s.getPathIterator(at), normalize, geo);
+            // fill: the device-space path as it is (no normalization for fills)
+            path(s.getPathIterator(at), false, geo);
         } else {
             // stroke: normalized in device space, stroked in user space
             Shape userShape = s;

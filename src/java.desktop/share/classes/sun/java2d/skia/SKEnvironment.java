@@ -99,8 +99,11 @@ public final class SKEnvironment {
             // inherits these values until measured. A destination read without
             // framebuffer fetch costs a render pass and a copy per draw (Dawn on
             // Direct3D, Metal on Intel and AMD GPUs), which LCD text cannot
-            // afford once overlapping glyphs are drawn separately.
-            return new Configuration(1, false, framebufferFetch ? LcdMode.BLEND : LcdMode.TWOPASS, framebufferFetch);
+            // afford once overlapping glyphs are drawn separately. Of the two
+            // modes without a destination read, accumulate is the faster one
+            // (one layer per batch, no split) and the closer one at overlaps;
+            // in IDE scenes the two are indistinguishable (2026-10-21).
+            return new Configuration(1, false, framebufferFetch ? LcdMode.BLEND : LcdMode.ACCUMULATE, framebufferFetch);
         }
 
         Configuration withProperties() {

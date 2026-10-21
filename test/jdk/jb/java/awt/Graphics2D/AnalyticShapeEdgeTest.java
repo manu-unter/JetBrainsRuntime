@@ -79,7 +79,7 @@ public class AnalyticShapeEdgeTest {
         }
         StringBuilder failures = new StringBuilder();
         for (int scale : new int[] { 1, 2 }) {
-            for (String shape : new String[] { "rect", "roundrect", "pill", "ellipse" }) {
+            for (String shape : new String[] { "rect", "roundrect", "pill", "ellipse", "bigellipse" }) {
                 for (double fraction : new double[] { 0, 0.5 }) {
                     if (shape.equals("rect") && fraction != 0) {
                         continue;   // a rect at a half pixel is the parallelogram pipe's business (4 corner pixels off by 15 levels today)
@@ -137,13 +137,13 @@ public class AnalyticShapeEdgeTest {
         g.fillRect(0, 0, W, H);
         g.scale(scale, scale);
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        double x = 4 + fraction, y = 4 + fraction, w = 41, h = 20;
+        double x = 4 + fraction, y = 4 + fraction, w = shape.equals("bigellipse") ? 56 : 41, h = shape.equals("bigellipse") ? 36 : 20;
         Shape s = switch (shape) {
             case "rect" -> new Rectangle2D.Double(x, y, w, h);
             case "roundrect" -> new RoundRectangle2D.Double(x, y, w, h, 8, 8);
             // arcs wider than the shape: Java clamps each arc to its own side (a pill), see RoundRectIterator
             case "pill" -> new RoundRectangle2D.Double(x, y, w, h, 48, 48);
-            default -> new Ellipse2D.Double(x, y, w, h);
+            default -> new Ellipse2D.Double(x, y, w, h);   // ellipse and bigellipse
         };
         g.setColor(new Color(0x233558));
         g.fill(s);

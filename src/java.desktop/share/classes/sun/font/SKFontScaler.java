@@ -199,27 +199,38 @@ public final class SKFontScaler extends FontScaler {
      */
     @Override
     long createScalerContext(double[] matrix, int aa, int fm, float boldness, float italic) {
-        return createContextNative(nativeScaler, matrix, aa, fm, boldness, italic, 1.0, GRAY_MODE, GRAY_DARKENING, GRAY_LUMINANCE);
+        return createContextNative(nativeScaler, matrix, aa, fm, boldness, italic, 1.0, 1.0, GRAY_MODE, GRAY_DARKENING, GRAY_LUMINANCE);
     }
 
     @Override
     long createScalerContext(double[] matrix, int aa, int fm, float boldness, float italic, int luminance) {
-        return createContextNative(nativeScaler, matrix, aa, fm, boldness, italic, 1.0, GRAY_MODE, GRAY_DARKENING,
+        return createScalerContext(matrix, aa, fm, boldness, italic, luminance, 1.0);
+    }
+
+    /**
+     * With the display scale (the scale of the strike's device transform, 2 on a 200 % display):
+     * the platform's glyph placement grid is per device-independent pixel.
+     */
+    @Override
+    long createScalerContext(double[] matrix, int aa, int fm, float boldness, float italic, int luminance, double displayScale) {
+        return createContextNative(nativeScaler, matrix, aa, fm, boldness, italic, 1.0, displayScale, GRAY_MODE, GRAY_DARKENING,
                                    luminance >= 0 ? luminance : GRAY_LUMINANCE);
     }
 
     /**
      * A context for a strike that rounds whole-pixel advances in user space,
      * as the CoreText strike ({@code CStrike}) does: {@code deviceScale} is the
-     * scale of the device transform, which the glyph transform includes.
+     * scale of the device transform, which the glyph transform includes (and
+     * so also the display scale).
      */
     long createScalerContext(double[] matrix, double deviceScale, int aa, int fm, float boldness, float italic) {
-        return createContextNative(nativeScaler, matrix, aa, fm, boldness, italic, deviceScale, GRAY_MODE, GRAY_DARKENING, GRAY_LUMINANCE);
+        return createContextNative(nativeScaler, matrix, aa, fm, boldness, italic, deviceScale, deviceScale, GRAY_MODE, GRAY_DARKENING,
+                                   GRAY_LUMINANCE);
     }
 
     /** With the text luminance class (FontStrikeDesc.luminance) for the CoreGraphics route; -1 falls back to the property. */
     long createScalerContext(double[] matrix, double deviceScale, int aa, int fm, float boldness, float italic, int luminance) {
-        return createContextNative(nativeScaler, matrix, aa, fm, boldness, italic, deviceScale, GRAY_MODE, GRAY_DARKENING,
+        return createContextNative(nativeScaler, matrix, aa, fm, boldness, italic, deviceScale, deviceScale, GRAY_MODE, GRAY_DARKENING,
                                    luminance >= 0 ? luminance : GRAY_LUMINANCE);
     }
 
@@ -247,7 +258,8 @@ public final class SKFontScaler extends FontScaler {
     private static native int getGlyphCodeNative(long pScaler, char charCode);
     private static native long getUnitsPerEmNative(long pScaler);
     private static native long createContextNative(long pScaler, double[] matrix, int aa, int fm, float boldness, float italic,
-                                                   double deviceScale, int grayMode, float grayDarkening, int grayLuminance);
+                                                   double deviceScale, double displayScale, int grayMode, float grayDarkening,
+                                                   int grayLuminance);
     private static native void disposeContextNative(long pContext);
     private static native StrikeMetrics getFontMetricsNative(long pContext);
     private static native float getGlyphAdvanceNative(long pContext, int glyphCode);

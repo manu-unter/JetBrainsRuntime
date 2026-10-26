@@ -235,6 +235,12 @@ sk_sp<SkTypeface> SKPlatform_FallbackTypeface(jlong nativeFont, int codePoint, u
 // luminance only (not on the destination), so this is the platform's look for
 // that luminance. Text space is y up: the device matrix (y down) gets its y
 // flipped into the text matrix.
+void SKPlatform_SyntheticStyle(float *obliqueShear, float *boldEmFraction)
+{
+    *obliqueShear = 0x366A / 65536.0f;   // the JDK's FreeType scaler, until CoreText's own values are measured
+    *boldEmFraction = 1.0f / 32;
+}
+
 int SKPlatform_GlyphPlacementGrid(const SkTypeface *, float, float, bool)
 {
     return 0;   // CoreGraphics positions glyphs continuously; the JDK's variants stay

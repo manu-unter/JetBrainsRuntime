@@ -17,6 +17,7 @@ props() {
     skia-marlin)       echo "-Dsun.java2d.skia=true -Dsun.java2d.skia.shapes=marlin" ;;
     skia-skia-msaa4)   echo "-Dsun.java2d.skia=true -Dsun.java2d.skia.shapes=skia -Dsun.java2d.skia.msaa=4" ;;
     skia-strokes-java) echo "-Dsun.java2d.skia=true -Dsun.java2d.skia.strokes=java" ;;
+    skia-vulkan)       echo "-Dsun.java2d.skia=true -Dsun.java2d.skia.graphiteApi=vulkan" ;;   # Graphite on native Vulkan
     *) echo "unknown arm $1" >&2; exit 2 ;;
   esac
 }
